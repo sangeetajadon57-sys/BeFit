@@ -50,11 +50,131 @@ export default function FoodScanner({ onAddCalories }: FoodScannerProps) {
   const [isTuningMode, setIsTuningMode] = useState(false);
   const [isLogged, setIsLogged] = useState(false);
 
+  // Camera Authorization steps for sandbox stability
+  const [cameraPermissionGranted, setCameraPermissionGranted] = useState<boolean | null>(null);
+  const [isCheckingPermission, setIsCheckingPermission] = useState(false);
+  const [permissionError, setPermissionError] = useState<string>('');
+  const [hasAttemptedAutoStart, setHasAttemptedAutoStart] = useState(false);
+
   // HTML5 video element refs
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // React Callback Ref to handle instantaneous stream assignment when video element is dynamically injected
+  const videoCallbackRef = (element: HTMLVideoElement | null) => {
+    videoRef.current = element;
+    if (element && streamRef.current) {
+      try {
+        if (element.srcObject !== streamRef.current) {
+          element.srcObject = streamRef.current;
+        }
+        element.play().catch((playErr) => {
+          console.warn("Retried play command failed inside callback ref:", playErr);
+        });
+      } catch (err) {
+        console.warn("Failed to bind stream object on callback ref mount:", err);
+      }
+    }
+  };
+
+  // Synchronize stream with video element whenever videoRef mounts or camera becomes active
+  useEffect(() => {
+    let active = true;
+    if (isCameraActive && streamRef.current) {
+      const intervalId = setInterval(() => {
+        if (!active) return;
+        if (videoRef.current && streamRef.current) {
+          if (videoRef.current.srcObject !== streamRef.current) {
+            videoRef.current.srcObject = streamRef.current;
+            videoRef.current.play().catch((playErr) => {
+              console.warn("Retried play command failed inside synchronization loop:", playErr);
+            });
+          }
+          clearInterval(intervalId);
+        }
+      }, 50);
+
+      return () => {
+        clearInterval(intervalId);
+        active = false;
+      };
+    }
+  }, [isCameraActive]);
+
+  // Query initial camera state on load
+  useEffect(() => {
+    let active = true;
+    const checkPermissionOnMount = async () => {
+      if (typeof navigator !== 'undefined' && navigator.permissions && navigator.permissions.query) {
+        try {
+          const status = await navigator.permissions.query({ name: 'camera' as PermissionName });
+          if (!active) return;
+          if (status.state === 'granted') {
+            setCameraPermissionGranted(true);
+          } else {
+            setCameraPermissionGranted(false);
+          }
+          status.onchange = () => {
+            if (!active) return;
+            if (status.state === 'granted') {
+              setCameraPermissionGranted(true);
+            } else {
+              setCameraPermissionGranted(false);
+            }
+          };
+        } catch (e) {
+          if (active) setCameraPermissionGranted(null);
+        }
+      } else {
+        if (active) setCameraPermissionGranted(null);
+      }
+    };
+    checkPermissionOnMount();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const requestCameraPermission = async () => {
+    setIsCheckingPermission(true);
+    setPermissionError('');
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error("Your browser or sandbox environment does not support or allow media device capture. For sandbox previews, please click the site URL lock and permit video capture, or choose 'Open in new tab'.");
+      }
+      
+      // Request active camera stream directly with ideal facingMode
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { facingMode: { ideal: 'environment' } },
+        audio: false
+      });
+      
+      // Save stream & activate the camera view IMMEDIATELY to avoid duplicate browser calls
+      streamRef.current = stream;
+      setCameraPermissionGranted(true);
+      setIsCameraActive(true);
+      setHasAttemptedAutoStart(true);
+      setCameraError('');
+      
+    } catch (err: any) {
+      console.error("Camera authorization prompt rejected or failed:", err);
+      setCameraPermissionGranted(false);
+      
+      const errName = err.name || '';
+      const errMsg = (err.message || '').toLowerCase();
+      if (errName === 'NotAllowedError' || errName === 'PermissionDeniedError' || errMsg.includes('permission denied')) {
+        setPermissionError("Camera access was denied. Ensure browser-level webcam access is enabled by clicking the padlock or camera icon in your browser's address/search bar, settings to 'Allow', then click 'Allow Camera' again.");
+      } else if (errName === 'NotFoundError' || errName === 'DevicesNotFoundError') {
+        setPermissionError("No video capture hardware or scanner camera detected on your device.");
+      } else {
+        setPermissionError(`Webcam system blocker: ${err.message || 'Access blocked'}. Verify no other programs (Zoom, Teams, etc.) are streaming your webcam and retry.`);
+      }
+    } finally {
+      setIsCheckingPermission(false);
+    }
+  };
 
   // Cycle loading messages to engage user
   useEffect(() => {
@@ -177,8 +297,8 @@ export default function FoodScanner({ onAddCalories }: FoodScannerProps) {
       
       let friendlyInstructions = "Camera start failed. ";
       
-      if (errName === 'NotAllowedError' || errName === 'PermissionDeniedError') {
-        friendlyInstructions = "Camera permissions blocked! Please click the camera/site lock icon next to the URL in your browser, grant webcam access, and press Camera Snap again.";
+      if (errName === 'NotAllowedError' || errName === 'PermissionDeniedError' || errMsg.includes('permission denied')) {
+        friendlyInstructions = "Camera permissions blocked! Please click the padlock or camera icon in your address bar, grant webcam access to 'Allow', and click allow camera again.";
       } else if (errName === 'NotReadableError' || errName === 'TrackStartError' || errMsg.includes('could not start video source') || errMsg.includes('source failed to start')) {
         friendlyInstructions = "Webcam source busy! Your video camera is likely in use by Zoom, Teams, another browser tab, or another active program. Please close any software that utilizes your webcam, refresh the page, and try again.";
       } else if (errName === 'NotFoundError' || errName === 'DevicesNotFoundError') {
@@ -395,9 +515,60 @@ export default function FoodScanner({ onAddCalories }: FoodScannerProps) {
               </div>
             )}
 
-            {!isCameraActive ? (
+            {cameraPermissionGranted !== true ? (
+              // Prompt for camera access block until they allow it
+              <div id="camera-auth-block" className="border-2 border-dashed border-white/10 bg-white/5 rounded-2xl p-6 sm:p-8 text-center flex flex-col items-center justify-center space-y-5 min-h-[300px]">
+                <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-full text-emerald-400">
+                  <Camera className="w-8 h-8 animate-pulse" />
+                </div>
+                <div className="space-y-1.5 max-w-sm">
+                  <p className="text-sm font-semibold text-white">Camera Access Required</p>
+                  <p className="text-xs text-slate-400 leading-relaxed font-light">
+                    Every time you use our food scanning tool, Be Fit AI verifies local webcam permissions to activate the Live Scanner. Please grant permission inside your browser.
+                  </p>
+                </div>
+
+                {permissionError && (
+                  <div className="p-3.5 w-full bg-rose-500/10 border border-rose-500/20 text-rose-300 text-xs rounded-xl text-left leading-normal">
+                    <div className="flex gap-2 items-start">
+                      <AlertTriangle className="w-4 h-4 text-rose-405 mt-0.5 shrink-0" />
+                      <div>
+                        <span className="font-semibold block text-[11px] uppercase tracking-wider text-rose-400">Authorization Blocked / Pending</span>
+                        <p className="font-light text-rose-200/90 text-[11px] mt-0.5">{permissionError}</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex flex-col sm:flex-row gap-3 w-full max-w-xs pt-1">
+                  <button
+                    id="btn-request-cam-auth"
+                    type="button"
+                    onClick={requestCameraPermission}
+                    disabled={isCheckingPermission}
+                    className="flex-1 flex items-center justify-center gap-1.5 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-bold text-xs px-4 py-2.5 rounded-xl shadow-md transition cursor-pointer"
+                  >
+                    {isCheckingPermission ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-950" />
+                    ) : (
+                      <Camera className="w-3.5 h-3.5" />
+                    )}
+                    {isCheckingPermission ? "Checking..." : "Allow Camera"}
+                  </button>
+                  <button
+                    id="btn-skip-to-upload"
+                    type="button"
+                    onClick={() => setCameraPermissionGranted(true)}
+                    className="flex-1 bg-white/5 border border-white/10 hover:bg-white/10 text-slate-200 hover:text-white font-semibold text-xs px-4 py-2.5 rounded-xl transition cursor-pointer"
+                  >
+                    Skip & Upload
+                  </button>
+                </div>
+              </div>
+            ) : !isCameraActive ? (
               // Drag and drop interface
               <div
+                id="drag-drop-zone-cal"
                 onDragOver={handleDragOver}
                 onDrop={handleDrop}
                 className="border-2 border-dashed border-white/10 hover:border-emerald-500/50 bg-white/5 hover:bg-white/10 rounded-2xl p-8 sm:p-12 text-center transition cursor-pointer flex flex-col items-center justify-center space-y-4 min-h-[300px]"
@@ -438,7 +609,7 @@ export default function FoodScanner({ onAddCalories }: FoodScannerProps) {
               // Live camera preview box
               <div className="relative bg-slate-950 rounded-2xl overflow-hidden shadow-inner flex flex-col justify-between items-center h-[340px] sm:h-[400px] border border-white/10">
                 <video
-                  ref={videoRef}
+                  ref={videoCallbackRef}
                   className="absolute inset-0 w-full h-full object-cover"
                   playsInline
                   muted
