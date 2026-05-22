@@ -10,25 +10,26 @@ jobs:
         with:
           node-version: 22
 
-      - run: npm install
-
-      - name: Initialize Capacitor App
+      - name: Clean Install NPM Packages
         run: |
-          npm install @capacitor/core@latest @capacitor/cli@latest @capacitor/android@latest
-          npx cap init "Be Fit AI" "com.befit.app" --web-dir=dist
-          npm run build
-          npx cap add android
-          npx cap sync
+          npm install
+          npm install @capacitor/core@6 @capacitor/cli@6 @capacitor/android@6
+
+      - name: Build Web Code
+        run: |
+          npm run build --if-present
 
       - uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
-          java-version: '21'
+          java-version: '17'
 
-      - name: Force Build Tools Configuration
+      - name: Delete Old Android Setup and Create New One
         run: |
-          sed -i 's/targetSdkVersion = .*/targetSdkVersion = 34/g' android/variables.gradle
-          sed -i 's/compileSdkVersion = .*/compileSdkVersion = 34/g' android/variables.gradle
+          rm -rf android
+          npx cap init "Be Fit AI" "com.befit.app" --web-dir=dist
+          npx cap add android
+          npx cap sync
 
       - name: Build Android App Binary
         run: |
