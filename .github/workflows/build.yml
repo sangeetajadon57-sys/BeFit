@@ -5,27 +5,39 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+
       - run: npm install
-      - run: |
-          npm install @capacitor/core @capacitor/cli @capacitor/android
+
+      - name: Initialize Capacitor App
+        run: |
+          npm install @capacitor/core@latest @capacitor/cli@latest @capacitor/android@latest
           npx cap init "Be Fit AI" "com.befit.app" --web-dir=dist
           npm run build
           npx cap add android
           npx cap sync
+
       - uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
           java-version: '21'
-      - run: |
+
+      - name: Force Build Tools Configuration
+        run: |
+          sed -i 's/targetSdkVersion = .*/targetSdkVersion = 34/g' android/variables.gradle
+          sed -i 's/compileSdkVersion = .*/compileSdkVersion = 34/g' android/variables.gradle
+
+      - name: Build Android App Binary
+        run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleDebug
+          ./gradlew assembleDebug --no-daemon
+
       - uses: actions/upload-artifact@v4
         with:
           name: MyMobileApp
           path: android/app/build/outputs/apk/debug/app-debug.apk
-          
           
