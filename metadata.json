@@ -1,0 +1,10 @@
+{
+  "name": "Be Fit AI",
+  "description": "A premium health and AI-powered fitness calculator, body metric analyzer, and food calorie scanner.",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
