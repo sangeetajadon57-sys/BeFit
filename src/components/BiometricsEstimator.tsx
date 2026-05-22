@@ -16,7 +16,8 @@ import {
   estimateWeight, 
   HeightEstimationInputs, 
   WeightEstimationInputs,
-  calculateIdealWeightSpecial
+  calculateIdealWeightSpecial,
+  IdealWeightSpecialOutput
 } from '../utils/calculators';
 
 interface BiometricsEstimatorProps {
@@ -61,6 +62,8 @@ export default function BiometricsEstimator({
 
   // Local parameter overrides inside Calculator
   const [calcHeight, setCalcHeight] = useState('');
+  const [calcHeightFt, setCalcHeightFt] = useState('5');
+  const [calcHeightIn, setCalcHeightIn] = useState('9');
   const [calcAge, setCalcAge] = useState('');
   const [calcGender, setCalcGender] = useState<'male' | 'female'>('male');
   const [isCalculating, setIsCalculating] = useState(false);
@@ -69,6 +72,9 @@ export default function BiometricsEstimator({
   // Computed results state
   const [calculatedHeight, setCalculatedHeight] = useState<number | null>(null);
   const [calculatedWeight, setCalculatedWeight] = useState<number | null>(null);
+  const [clinicalIdeals, setClinicalIdeals] = useState<IdealWeightSpecialOutput | null>(() => {
+    return calculateIdealWeightSpecial(currentHeightCm, age, gender);
+  });
   const [errorText, setErrorText] = useState('');
 
   const isImperial = unitSystem === 'imperial';
@@ -82,10 +88,13 @@ export default function BiometricsEstimator({
     }
     if (isOpen) {
       // Pre-fill local fields with the baseline values from the outer app state
-      const initialHeightVal = isImperial 
-        ? Math.round(currentHeightCm / 2.54).toString()
-        : currentHeightCm.toString();
-      setCalcHeight(initialHeightVal);
+      if (isImperial) {
+        const totalIn = Math.round(currentHeightCm / 2.54);
+        setCalcHeightFt(String(Math.floor(totalIn / 12)));
+        setCalcHeightIn(String(totalIn % 12));
+      } else {
+        setCalcHeight(currentHeightCm.toString());
+      }
       setCalcAge(age.toString());
       setCalcGender(gender);
     }
@@ -148,17 +157,23 @@ export default function BiometricsEstimator({
     if (activeTab !== 'weight') return;
     setErrorText('');
 
-    const parsedH = parseFloat(calcHeight);
+    const parsedH = isImperial 
+      ? (parseInt(calcHeightFt, 10) || 0) * 12 + (parseFloat(calcHeightIn) || 0)
+      : parseFloat(calcHeight);
     const parsedA = parseInt(calcAge, 10);
     if (isNaN(parsedH) || parsedH <= 0 || isNaN(parsedA) || parsedA <= 0) {
       setCalculatedWeight(null);
+      setClinicalIdeals(null);
       return;
     }
 
     const heightInCm = isImperial ? parsedH * 2.54 : parsedH;
 
+    // Always compute and sync the full list of clinical models inside state instantly as inputs change
+    const results = calculateIdealWeightSpecial(heightInCm, parsedA, calcGender);
+    setClinicalIdeals(results);
+
     if (weightMethod === 'clinicalIdeal') {
-      const results = calculateIdealWeightSpecial(heightInCm, parsedA, calcGender);
       if (selectedIdealFormula === 'recommended') {
         setCalculatedWeight(results.recommendedKg);
       } else if (selectedIdealFormula === 'devine') {
@@ -226,6 +241,8 @@ export default function BiometricsEstimator({
     calcGender, 
     calcAge,
     calcHeight, 
+    calcHeightFt,
+    calcHeightIn,
     isImperial
   ]);
 
@@ -233,7 +250,9 @@ export default function BiometricsEstimator({
     setIsCalculating(true);
     setShowCalculationSuccess(false);
 
-    const parsedH = parseFloat(calcHeight);
+    const parsedH = isImperial 
+      ? (parseInt(calcHeightFt, 10) || 0) * 12 + (parseFloat(calcHeightIn) || 0)
+      : parseFloat(calcHeight);
     const parsedA = parseInt(calcAge, 10);
     if (isNaN(parsedH) || parsedH <= 0) {
       setErrorText('Please enter a valid height.');
@@ -268,11 +287,22 @@ export default function BiometricsEstimator({
   if (!isOpen) return null;
 
   // Dynamically compute medical ideals block based on user's manual calculator parameters
-  const parsedHForIdeals = parseFloat(calcHeight);
-  const customH = isNaN(parsedHForIdeals) ? 170 : (isImperial ? parsedHForIdeals * 2.54 : parsedHForIdeals);
-  const customA = parseInt(calcAge, 10) || 28;
-  const customG = calcGender || 'male';
-  const ideals = calculateIdealWeightSpecial(customH, customA, customG);
+  const ideals = clinicalIdeals;
+  const formulaValues = ideals ? {
+    recommended: isImperial ? `${Math.round(ideals.recommendedKg * 2.20462)} lbs` : `${ideals.recommendedKg} kg`,
+    ageAdjusted: isImperial ? `${Math.round(ideals.ageAdjustedBmiKg * 2.20462)} lbs` : `${ideals.ageAdjustedBmiKg} kg`,
+    robinson: isImperial ? `${Math.round(ideals.robinsonKg * 2.20462)} lbs` : `${ideals.robinsonKg} kg`,
+    devine: isImperial ? `${Math.round(ideals.devineKg * 2.20462)} lbs` : `${ideals.devineKg} kg`,
+    miller: isImperial ? `${Math.round(ideals.millerKg * 2.20462)} lbs` : `${ideals.millerKg} kg`,
+    hamwi: isImperial ? `${Math.round(ideals.hamwiKg * 2.20462)} lbs` : `${ideals.hamwiKg} kg`,
+  } : {
+    recommended: '--',
+    ageAdjusted: '--',
+    robinson: '--',
+    devine: '--',
+    miller: '--',
+    hamwi: '--',
+  };
 
   return (
     <AnimatePresence>
@@ -516,17 +546,49 @@ export default function BiometricsEstimator({
                     </div>
 
                     {/* Height field */}
-                    <div className="space-y-1">
-                      <label className="text-[9px] text-slate-400 block font-mono uppercase font-semibold">Height ({isImperial ? 'in' : 'cm'})</label>
-                      <input
-                        type="number"
-                        step="0.1"
-                        min="10"
-                        max="300"
-                        value={calcHeight}
-                        onChange={(e) => setCalcHeight(e.target.value)}
-                        className="w-full bg-slate-950/40 border border-white/10 rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:ring-1 focus:ring-emerald-500 font-mono text-center"
-                      />
+                    <div className="space-y-1 font-sans">
+                      <label className="text-[9px] text-slate-400 block font-mono uppercase font-semibold">
+                        Height {isImperial ? '(ft / in)' : '(cm)'}
+                      </label>
+                      {!isImperial ? (
+                        <input
+                          type="number"
+                          step="0.1"
+                          min="10"
+                          max="300"
+                          value={calcHeight}
+                          onChange={(e) => setCalcHeight(e.target.value)}
+                          className="w-full bg-slate-950/40 border border-white/10 rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:ring-1 focus:ring-emerald-500 font-mono text-center"
+                        />
+                      ) : (
+                        <div className="grid grid-cols-2 gap-1">
+                          <div className="relative">
+                            <input
+                              type="number"
+                              min="1"
+                              max="9"
+                              value={calcHeightFt}
+                              onChange={(e) => setCalcHeightFt(e.target.value)}
+                              placeholder="ft"
+                              className="w-full bg-slate-950/40 border border-white/10 rounded-lg pl-1.5 pr-5 py-1 text-[11px] text-white focus:outline-none focus:ring-1 focus:ring-emerald-500 font-mono text-center"
+                            />
+                            <span className="absolute right-1 top-1/2 -translate-y-1/2 text-[9px] font-mono text-slate-400 pointer-events-none">ft</span>
+                          </div>
+                          <div className="relative">
+                            <input
+                              type="number"
+                              min="0"
+                              max="11.9"
+                              step="0.1"
+                              value={calcHeightIn}
+                              onChange={(e) => setCalcHeightIn(e.target.value)}
+                              placeholder="in"
+                              className="w-full bg-slate-950/40 border border-white/10 rounded-lg pl-1.5 pr-5 py-1 text-[11px] text-white focus:outline-none focus:ring-1 focus:ring-emerald-500 font-mono text-center"
+                            />
+                            <span className="absolute right-1 top-1/2 -translate-y-1/2 text-[9px] font-mono text-slate-400 pointer-events-none">in</span>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -552,12 +614,12 @@ export default function BiometricsEstimator({
                             {selectedIdealFormula === 'recommended' && <div className="w-2 h-2 rounded-full bg-emerald-400 shrink-0 mt-0.5" />}
                           </div>
                           <div className="mt-2">
-                            <div className="text-sm font-bold font-mono">
-                              {isImperial 
-                                ? `${Math.round(ideals.recommendedKg * 2.20462)} lbs` 
-                                : `${ideals.recommendedKg} kg`}
+                            <div className="text-sm font-bold font-mono text-white">
+                              {formulaValues.recommended}
                             </div>
-                            <span className="text-[8px] text-slate-400 block leading-tight mt-1">Multi-factor blend optimized for {gender} at age {age}.</span>
+                            <span className="text-[8px] text-slate-400 block leading-tight mt-1">
+                              Multi-factor blend optimized for {calcGender === 'male' ? 'Male' : 'Female'} at age {calcAge || '--'}.
+                            </span>
                           </div>
                         </button>
 
@@ -576,12 +638,12 @@ export default function BiometricsEstimator({
                             {selectedIdealFormula === 'ageAdjusted' && <div className="w-2 h-2 rounded-full bg-emerald-400 shrink-0 mt-0.5" />}
                           </div>
                           <div className="mt-2">
-                            <div className="text-sm font-bold font-mono">
-                              {isImperial 
-                                ? `${Math.round(ideals.ageAdjustedBmiKg * 2.20462)} lbs` 
-                                : `${ideals.ageAdjustedBmiKg} kg`}
+                            <div className="text-sm font-bold font-mono text-white">
+                              {formulaValues.ageAdjusted}
                             </div>
-                            <span className="text-[8px] text-slate-400 block leading-tight mt-1">Targets optimal metabolic reserve for {age}y decadal biology.</span>
+                            <span className="text-[8px] text-slate-400 block leading-tight mt-1">
+                              Targets optimal metabolic reserve for {calcAge || '--'}y decadal biology.
+                            </span>
                           </div>
                         </button>
 
@@ -600,10 +662,8 @@ export default function BiometricsEstimator({
                             {selectedIdealFormula === 'robinson' && <div className="w-2 h-2 rounded-full bg-emerald-400 shrink-0 mt-0.5" />}
                           </div>
                           <div className="mt-2">
-                            <div className="text-sm font-bold font-mono">
-                              {isImperial 
-                                ? `${Math.round(ideals.robinsonKg * 2.20462)} lbs` 
-                                : `${ideals.robinsonKg} kg`}
+                            <div className="text-sm font-bold font-mono text-white">
+                              {formulaValues.robinson}
                             </div>
                             <span className="text-[8px] text-slate-405 block leading-tight mt-1">Refined consensus demographic equation model.</span>
                           </div>
@@ -624,10 +684,8 @@ export default function BiometricsEstimator({
                             {selectedIdealFormula === 'devine' && <div className="w-2 h-2 rounded-full bg-emerald-400 shrink-0 mt-0.5" />}
                           </div>
                           <div className="mt-2">
-                            <div className="text-sm font-bold font-mono">
-                              {isImperial 
-                                ? `${Math.round(ideals.devineKg * 2.20462)} lbs` 
-                                : `${ideals.devineKg} kg`}
+                            <div className="text-sm font-bold font-mono text-white">
+                              {formulaValues.devine}
                             </div>
                             <span className="text-[8px] text-slate-450 block leading-tight mt-1">Standard medical dosing benchmark standard.</span>
                           </div>
@@ -648,10 +706,8 @@ export default function BiometricsEstimator({
                             {selectedIdealFormula === 'miller' && <div className="w-2 h-2 rounded-full bg-emerald-400 shrink-0 mt-0.5" />}
                           </div>
                           <div className="mt-2">
-                            <div className="text-sm font-bold font-mono">
-                              {isImperial 
-                                ? `${Math.round(ideals.millerKg * 2.20462)} lbs` 
-                                : `${ideals.millerKg} kg`}
+                            <div className="text-sm font-bold font-mono text-white">
+                              {formulaValues.miller}
                             </div>
                             <span className="text-[8px] text-slate-450 block leading-tight mt-1">Proportional cellular-volume formula standards.</span>
                           </div>
@@ -672,10 +728,8 @@ export default function BiometricsEstimator({
                             {selectedIdealFormula === 'hamwi' && <div className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />}
                           </div>
                           <div className="mt-2">
-                            <div className="text-sm font-bold font-mono">
-                              {isImperial 
-                                ? `${Math.round(ideals.hamwiKg * 2.20462)} lbs` 
-                                : `${ideals.hamwiKg} kg`}
+                            <div className="text-sm font-bold font-mono text-white">
+                              {formulaValues.hamwi}
                             </div>
                             <span className="text-[8px] text-slate-450 block leading-tight mt-1">Historical weight & body frame metric tracker.</span>
                           </div>

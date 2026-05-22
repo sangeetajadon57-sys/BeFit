@@ -68,6 +68,10 @@ export interface CalculationResult {
   idealWeight?: {
     devine: number;
     robinson: number;
+    miller: number;
+    hamwi: number;
+    ageAdjusted: number;
+    recommended: number;
     unit: string;
   };
 }

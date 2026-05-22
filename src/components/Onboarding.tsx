@@ -20,10 +20,18 @@ export default function Onboarding({ onComplete, initialProfile }: OnboardingPro
   const [weightMetric, setWeightMetric] = useState<string>(initialProfile?.weight ? String(initialProfile.weight) : '70');
   const [waistMetric, setWaistMetric] = useState<string>(initialProfile?.waist ? String(initialProfile.waist) : '');
   
-  // Imperial standard state default conversions: 175cm -> ~69 inches, 70kg -> ~154 lbs
-  const [heightImperial, setHeightImperial] = useState<string>(
-    initialProfile?.height ? String(Math.round(initialProfile.height / 2.54)) : '69'
-  );
+  // Imperial standard state default conversions: 175cm -> 5 feet, 9 inches
+  const getFtAndIn = (cmVal: number) => {
+    const totalInches = Math.round(cmVal / 2.54);
+    const feet = Math.floor(totalInches / 12);
+    const inches = totalInches % 12;
+    return { feet, inches };
+  };
+
+  const initialFtIn = initialProfile?.height ? getFtAndIn(initialProfile.height) : { feet: 5, inches: 9 };
+  const [heightFt, setHeightFt] = useState<string>(String(initialFtIn.feet));
+  const [heightIn, setHeightIn] = useState<string>(String(initialFtIn.inches));
+
   const [weightImperial, setWeightImperial] = useState<string>(
     initialProfile?.weight ? String(Math.round(initialProfile.weight * 2.20462)) : '154'
   );
@@ -46,11 +54,13 @@ export default function Onboarding({ onComplete, initialProfile }: OnboardingPro
 
   const currentHeightCm = unitSystem === 'metric' 
     ? (parseFloat(heightMetric) || 175) 
-    : (parseFloat(heightImperial) || 69) * 2.54;
+    : ((parseInt(heightFt, 10) || 0) * 12 + (parseFloat(heightIn) || 0)) * 2.54;
 
   const handleApplyHeight = (heightCm: number) => {
     setHeightMetric(String(Math.round(heightCm * 10) / 10));
-    setHeightImperial(String(Math.round(heightCm / 2.54)));
+    const totalIn = Math.round(heightCm / 2.54);
+    setHeightFt(String(Math.floor(totalIn / 12)));
+    setHeightIn(String(totalIn % 12));
   };
 
   const handleApplyWeight = (weightKg: number) => {
@@ -95,12 +105,14 @@ export default function Onboarding({ onComplete, initialProfile }: OnboardingPro
       }
     } else {
       // Convert Imperial to Metric
-      const heightInches = parseFloat(heightImperial);
+      const feet = parseInt(heightFt, 10) || 0;
+      const inches = parseFloat(heightIn) || 0;
+      const heightInches = feet * 12 + inches;
       const weightLbs = parseFloat(weightImperial);
       const waistInches = waistImperial ? parseFloat(waistImperial) : undefined;
 
-      if (!heightInches || heightInches < 20 || heightInches > 110) {
-        setValidationError('Please enter a valid height between 20 and 110 inches.');
+      if (heightInches < 20 || heightInches > 110) {
+        setValidationError('Please enter a valid height between 1ft 8in and 9ft 2in.');
         return;
       }
       if (!weightLbs || weightLbs < 20 || weightLbs > 1100) {
@@ -228,8 +240,8 @@ export default function Onboarding({ onComplete, initialProfile }: OnboardingPro
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
             <div>
               <div className="flex justify-between items-center mb-2">
-                <label htmlFor="user-height" className="block text-xs font-semibold uppercase tracking-wider text-slate-400">
-                  Height {unitSystem === 'metric' ? '(cm)' : '(inches)'}
+                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400">
+                  Height {unitSystem === 'metric' ? '(cm)' : '(ft / in)'}
                 </label>
                 <button
                   type="button"
@@ -239,16 +251,50 @@ export default function Onboarding({ onComplete, initialProfile }: OnboardingPro
                   <Calculator className="w-2.5 h-2.5" /> Calculate
                 </button>
               </div>
-              <input
-                id="user-height"
-                type="number"
-                step="any"
-                value={unitSystem === 'metric' ? heightMetric : heightImperial}
-                onChange={(e) => unitSystem === 'metric' ? setHeightMetric(e.target.value) : setHeightImperial(e.target.value)}
-                placeholder={unitSystem === 'metric' ? 'e.g. 175' : 'e.g. 69'}
-                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white/10 transition"
-                required
-              />
+              {unitSystem === 'metric' ? (
+                <input
+                  id="user-height"
+                  type="number"
+                  step="0.1"
+                  value={heightMetric}
+                  onChange={(e) => setHeightMetric(e.target.value)}
+                  placeholder="e.g. 175"
+                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white/10 transition"
+                  required
+                />
+              ) : (
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="relative">
+                    <input
+                      id="user-height-ft"
+                      type="number"
+                      min="1"
+                      max="9"
+                      value={heightFt}
+                      onChange={(e) => setHeightFt(e.target.value)}
+                      placeholder="ft"
+                      className="w-full bg-white/5 border border-white/10 rounded-xl pl-4 pr-8 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white/10 transition font-mono"
+                      required
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 font-mono pointer-events-none">ft</span>
+                  </div>
+                  <div className="relative">
+                    <input
+                      id="user-height-in"
+                      type="number"
+                      min="0"
+                      max="11.9"
+                      step="0.1"
+                      value={heightIn}
+                      onChange={(e) => setHeightIn(e.target.value)}
+                      placeholder="in"
+                      className="w-full bg-white/5 border border-white/10 rounded-xl pl-4 pr-8 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white/10 transition font-mono"
+                      required
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 font-mono pointer-events-none">in</span>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div>

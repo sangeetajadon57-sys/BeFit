@@ -42,6 +42,8 @@ export default function ResultsDashboard({ result, onEditProfile, onUpdateWeight
   const [isRechecking, setIsRechecking] = useState(false);
   const [weightInput, setWeightInput] = useState('');
   const [heightInput, setHeightInput] = useState('');
+  const [heightFtInput, setHeightFtInput] = useState('');
+  const [heightInInput, setHeightInInput] = useState('');
   const [recheckError, setRecheckError] = useState('');
   const [showSuccessToast, setShowSuccessToast] = useState(false);
 
@@ -54,12 +56,14 @@ export default function ResultsDashboard({ result, onEditProfile, onUpdateWeight
       ? Math.round(result.profile.weight * 2.20462) 
       : result.profile.weight;
     
-    const currentHeight = isImperial 
-      ? Math.round(result.profile.height / 2.54) 
-      : result.profile.height;
-
     setWeightInput(String(currentWeight));
-    setHeightInput(String(currentHeight));
+    if (isImperial) {
+      const currentHeightInches = Math.round(result.profile.height / 2.54);
+      setHeightFtInput(String(Math.floor(currentHeightInches / 12)));
+      setHeightInInput(String(currentHeightInches % 12));
+    } else {
+      setHeightInput(String(result.profile.height));
+    }
     setRecheckError('');
     setIsRechecking(true);
   };
@@ -71,12 +75,14 @@ export default function ResultsDashboard({ result, onEditProfile, onUpdateWeight
         ? Math.round(result.profile.weight * 2.20462) 
         : result.profile.weight;
       
-      const currentHeight = isImperial 
-        ? Math.round(result.profile.height / 2.54) 
-        : result.profile.height;
-
       setWeightInput(String(currentWeight));
-      setHeightInput(String(currentHeight));
+      if (isImperial) {
+        const currentHeightInches = Math.round(result.profile.height / 2.54);
+        setHeightFtInput(String(Math.floor(currentHeightInches / 12)));
+        setHeightInInput(String(currentHeightInches % 12));
+      } else {
+        setHeightInput(String(result.profile.height));
+      }
       setRecheckError('');
       setIsRechecking(true);
     }
@@ -85,8 +91,13 @@ export default function ResultsDashboard({ result, onEditProfile, onUpdateWeight
   };
 
   const handleApplyHeight = (heightCm: number) => {
-    const val = isImperial ? Math.round(heightCm / 2.54) : Math.round(heightCm * 10) / 10;
-    setHeightInput(String(val));
+    if (isImperial) {
+      const totalIn = Math.round(heightCm / 2.54);
+      setHeightFtInput(String(Math.floor(totalIn / 12)));
+      setHeightInInput(String(totalIn % 12));
+    } else {
+      setHeightInput(String(Math.round(heightCm * 10) / 10));
+    }
   };
 
   const handleApplyWeight = (weightKg: number) => {
@@ -97,19 +108,22 @@ export default function ResultsDashboard({ result, onEditProfile, onUpdateWeight
   const handleSaveRecheck = () => {
     setRecheckError('');
     const weightNum = parseFloat(weightInput);
-    const heightNum = parseFloat(heightInput);
 
-    if (isNaN(weightNum) || isNaN(heightNum)) {
+    if (isNaN(weightNum)) {
       setRecheckError('Please enter valid numeric parameters.');
       return;
     }
 
     let metricWeight = weightNum;
-    let metricHeight = heightNum;
+    let metricHeight = 0;
 
     if (isImperial) {
-      if (heightNum < 20 || heightNum > 110) {
-        setRecheckError('Height must be between 20 and 110 inches.');
+      const feet = parseInt(heightFtInput, 10) || 0;
+      const inches = parseFloat(heightInInput) || 0;
+      const heightInches = feet * 12 + inches;
+
+      if (heightInches < 20 || heightInches > 110) {
+        setRecheckError('Height must be between 1ft 8in and 9ft 2in.');
         return;
       }
       if (weightNum < 20 || weightNum > 1100) {
@@ -117,9 +131,10 @@ export default function ResultsDashboard({ result, onEditProfile, onUpdateWeight
         return;
       }
       metricWeight = weightNum / 2.20462;
-      metricHeight = heightNum * 2.54;
+      metricHeight = heightInches * 2.54;
     } else {
-      if (heightNum < 50 || heightNum > 260) {
+      const heightNum = parseFloat(heightInput);
+      if (isNaN(heightNum) || heightNum < 50 || heightNum > 260) {
         setRecheckError('Height must be between 50 and 260 cm.');
         return;
       }
@@ -127,6 +142,8 @@ export default function ResultsDashboard({ result, onEditProfile, onUpdateWeight
         setRecheckError('Weight must be between 10 and 500 kg.');
         return;
       }
+      metricWeight = weightNum;
+      metricHeight = heightNum;
     }
 
     onUpdateWeightHeight(metricWeight, metricHeight);
@@ -290,7 +307,7 @@ export default function ResultsDashboard({ result, onEditProfile, onUpdateWeight
                   </div>
                   <div>
                     <div className="flex justify-between items-center mb-1">
-                      <label className="text-[9px] text-slate-400 block font-mono uppercase">Height ({displayHeightUnit})</label>
+                      <label className="text-[9px] text-slate-400 block font-mono uppercase">Height {isImperial ? '(ft / in)' : `(${displayHeightUnit})`}</label>
                       <button
                         type="button"
                         onClick={() => handleOpenEstimator('height')}
@@ -299,13 +316,43 @@ export default function ResultsDashboard({ result, onEditProfile, onUpdateWeight
                         <Calculator className="w-2 h-2" /> Calc
                       </button>
                     </div>
-                    <input
-                      type="number"
-                      step="any"
-                      value={heightInput}
-                      onChange={(e) => setHeightInput(e.target.value)}
-                      className="w-full bg-white/5 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                    />
+                    {!isImperial ? (
+                      <input
+                        type="number"
+                        step="any"
+                        value={heightInput}
+                        onChange={(e) => setHeightInput(e.target.value)}
+                        className="w-full bg-white/5 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                      />
+                    ) : (
+                      <div className="grid grid-cols-2 gap-1.5">
+                        <div className="relative">
+                          <input
+                            type="number"
+                            min="1"
+                            max="9"
+                            value={heightFtInput}
+                            onChange={(e) => setHeightFtInput(e.target.value)}
+                            placeholder="ft"
+                            className="w-full bg-white/5 border border-white/10 rounded-lg pl-2 pr-5 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-emerald-500 font-mono text-center"
+                          />
+                          <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[9px] text-slate-400 font-mono pointer-events-none">ft</span>
+                        </div>
+                        <div className="relative">
+                          <input
+                            type="number"
+                            min="0"
+                            max="11.9"
+                            step="0.1"
+                            value={heightInInput}
+                            onChange={(e) => setHeightInInput(e.target.value)}
+                            placeholder="in"
+                            className="w-full bg-white/5 border border-white/10 rounded-lg pl-2 pr-5 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-emerald-500 font-mono text-center"
+                          />
+                          <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[9px] text-slate-400 font-mono pointer-events-none">in</span>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -434,15 +481,37 @@ export default function ResultsDashboard({ result, onEditProfile, onUpdateWeight
               </p>
             </div>
             {result.idealWeight && (
-              <div className="pt-2 border-t border-emerald-500/10 grid grid-cols-2 gap-2 mt-1">
-                <div>
-                  <span className="text-[8px] font-bold uppercase tracking-wider text-slate-400 font-mono block">Devine Ideal Weight</span>
-                  <span className="text-xs font-bold text-slate-200">{result.idealWeight.devine} {result.idealWeight.unit}</span>
+              <div className="pt-2 border-t border-emerald-500/10 space-y-2 mt-1">
+                <span className="text-[9px] font-bold uppercase tracking-wider text-slate-300 block font-mono">Clinical Ideal Body Weights (IBW)</span>
+                <div className="grid grid-cols-2 gap-2 text-left">
+                  <div className="bg-white/5 p-2 rounded border border-white/5">
+                    <span className="text-[8px] font-bold uppercase text-slate-400 font-mono block font-medium">Devine (1974)</span>
+                    <span className="text-xs font-bold text-slate-200">{result.idealWeight.devine} {result.idealWeight.unit}</span>
+                  </div>
+                  <div className="bg-white/5 p-2 rounded border border-white/5">
+                    <span className="text-[8px] font-bold uppercase text-slate-400 font-mono block font-medium">Robinson (1983)</span>
+                    <span className="text-xs font-bold text-slate-200">{result.idealWeight.robinson} {result.idealWeight.unit}</span>
+                  </div>
+                  <div className="bg-white/5 p-2 rounded border border-white/5">
+                    <span className="text-[8px] font-bold uppercase text-slate-400 font-mono block font-medium">Miller (1983)</span>
+                    <span className="text-xs font-bold text-slate-200">{result.idealWeight.miller ?? '--'} {result.idealWeight.unit}</span>
+                  </div>
+                  <div className="bg-white/5 p-2 rounded border border-white/5">
+                    <span className="text-[8px] font-bold uppercase text-slate-400 font-mono block font-medium">Hamwi (1964)</span>
+                    <span className="text-xs font-bold text-slate-200">{result.idealWeight.hamwi ?? '--'} {result.idealWeight.unit}</span>
+                  </div>
+                  <div className="bg-white/5 p-2 rounded border border-white/5">
+                    <span className="text-[8px] font-bold uppercase text-slate-400 font-mono block font-medium">Age-Adjusted Target</span>
+                    <span className="text-xs font-bold text-slate-200">{result.idealWeight.ageAdjusted ?? '--'} {result.idealWeight.unit}</span>
+                  </div>
+                  <div className="bg-emerald-500/15 p-2 rounded border border-emerald-500/25">
+                    <span className="text-[8px] font-bold uppercase text-emerald-400 font-mono block font-medium">Recommended Blend</span>
+                    <span className="text-xs font-bold text-emerald-300">{result.idealWeight.recommended ?? '--'} {result.idealWeight.unit}</span>
+                  </div>
                 </div>
-                <div>
-                  <span className="text-[8px] font-bold uppercase tracking-wider text-slate-400 font-mono block">Robinson Ideal Weight</span>
-                  <span className="text-xs font-bold text-slate-200">{result.idealWeight.robinson} {result.idealWeight.unit}</span>
-                </div>
+                <p className="text-[8px] text-slate-400 leading-normal font-light">
+                  *Different models emphasize different biological factors. Miller and Recommended Blend commonly offer highly practical, comfortable Targets.
+                </p>
               </div>
             )}
           </div>

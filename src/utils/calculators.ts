@@ -22,17 +22,92 @@ export function convertMetricToImperial(heightCm: number, weightKg: number, wais
   return { heightInches, weightLbs, waistInches };
 }
 
+export function getPediatricMedianBmi(age: number, gender: 'male' | 'female'): number {
+  const points = gender === 'male' ? [
+    { a: 1, bmi: 17.5 },
+    { a: 2, bmi: 16.5 },
+    { a: 3, bmi: 16.1 },
+    { a: 4, bmi: 15.7 },
+    { a: 5, bmi: 15.4 },
+    { a: 6, bmi: 15.3 },
+    { a: 7, bmi: 15.4 },
+    { a: 8, bmi: 15.6 },
+    { a: 9, bmi: 15.9 },
+    { a: 10, bmi: 16.3 },
+    { a: 11, bmi: 16.8 },
+    { a: 12, bmi: 17.3 },
+    { a: 13, bmi: 17.9 },
+    { a: 14, bmi: 18.5 },
+    { a: 15, bmi: 19.2 },
+    { a: 16, bmi: 19.8 },
+    { a: 17, bmi: 20.3 },
+    { a: 18, bmi: 20.8 }
+  ] : [
+    { a: 1, bmi: 17.0 },
+    { a: 2, bmi: 16.2 },
+    { a: 3, bmi: 15.8 },
+    { a: 4, bmi: 15.4 },
+    { a: 5, bmi: 15.2 },
+    { a: 6, bmi: 15.1 },
+    { a: 7, bmi: 15.2 },
+    { a: 8, bmi: 15.4 },
+    { a: 9, bmi: 15.8 },
+    { a: 10, bmi: 16.2 },
+    { a: 11, bmi: 16.7 },
+    { a: 12, bmi: 17.2 },
+    { a: 13, bmi: 17.8 },
+    { a: 14, bmi: 18.5 },
+    { a: 15, bmi: 19.1 },
+    { a: 16, bmi: 19.7 },
+    { a: 17, bmi: 20.2 },
+    { a: 18, bmi: 20.6 }
+  ];
+
+  if (age <= 1) return points[0].bmi;
+  if (age >= 18) return points[points.length - 1].bmi;
+
+  for (let i = 0; i < points.length - 1; i++) {
+    const p1 = points[i];
+    const p2 = points[i + 1];
+    if (age >= p1.a && age <= p2.a) {
+      const ratio = (age - p1.a) / (p2.a - p1.a);
+      return p1.bmi + ratio * (p2.bmi - p1.bmi);
+    }
+  }
+
+  return points[points.length - 1].bmi;
+}
+
+export function getHealthyBmiRangeForAge(age: number, gender: 'male' | 'female'): { min: number; max: number; median: number } {
+  if (age >= 18) {
+    return { min: 18.5, max: 24.9, median: 21.7 };
+  }
+
+  const median = getPediatricMedianBmi(age, gender);
+  const min = Math.max(13.0, median - 2.2);
+  const max = median + 2.0;
+
+  return { min, max, median };
+}
+
 export function calculateMetrics(profile: UserProfile): CalculationResult {
   const { age, gender, height, weight, waist, activityLevel, goal, unitSystem } = profile;
   
   // Convert heights to meters for BMI
   const heightM = height / 100;
   
-  // 1. BMI Calculation
+  // 1. BMI Calculation with age-adjusted pediatric percentiles
   const bmiValue = weight / (heightM * heightM);
   const roundedBmi = Math.round(bmiValue * 10) / 10;
   
-  const bmiRanges: MetricRange[] = [
+  const { min: healthyMinBmi, max: healthyMaxBmi } = getHealthyBmiRangeForAge(age, gender);
+  
+  const bmiRanges: MetricRange[] = age < 18 ? [
+    { label: 'Underweight', min: 0, max: Math.round((healthyMinBmi - 0.1) * 10) / 10, color: '#38bdf8', description: "Your child's body mass is lower than typical healthy age percentiles." },
+    { label: 'Healthy Weight', min: Math.round(healthyMinBmi * 10) / 10, max: Math.round(healthyMaxBmi * 10) / 10, color: '#4ade80', description: "Your child's weight is in an optimal percentile balance." },
+    { label: 'Overweight', min: Math.round((healthyMaxBmi + 0.1) * 10) / 10, max: Math.round((healthyMaxBmi + 3.0) * 10) / 10, color: '#facc15', description: "Your child's weight is slightly higher than age-matched percentiles." },
+    { label: 'Obese Range', min: Math.round((healthyMaxBmi + 3.1) * 10) / 10, max: 100, color: '#f87171', description: 'Pediatric indicators point toward elevated mass for active childhood physical growth.' }
+  ] : [
     { label: 'Underweight', min: 0, max: 18.4, color: '#38bdf8', description: 'Your body mass is lower than typical healthy benchmarks.' },
     { label: 'Healthy Weight', min: 18.5, max: 24.9, color: '#4ade80', description: 'Your weight is in an optimal balance with your height.' },
     { label: 'Overweight', min: 25.0, max: 29.9, color: '#facc15', description: 'Your weight is slightly higher than baseline heights standards.' },
@@ -44,31 +119,56 @@ export function calculateMetrics(profile: UserProfile): CalculationResult {
   let bmiExplanation = '';
   let bmiTips: string[] = [];
   
-  if (roundedBmi < 18.5) {
+  const formattedMin = Math.round(healthyMinBmi * 10) / 10;
+  const formattedMax = Math.round(healthyMaxBmi * 10) / 10;
+  const formattedObese = Math.round((healthyMaxBmi + 3.1) * 10) / 10;
+
+  if (roundedBmi < healthyMinBmi) {
     bmiCategory = 'Underweight';
-    bmiRangeText = 'Less than 18.5';
-    bmiExplanation = 'Your custom BMI indicates you might benefit from nutritional support or building strength. Focus on energy-dense, premium-fuel meals and regular strength development.';
-    bmiTips = [
+    bmiRangeText = `Less than ${formattedMin}`;
+    bmiExplanation = age < 18 
+      ? "Based on pediatric percentiles, your child's BMI is in the underweight range. Focus on nutrient-dense meals and balanced play to support healthy growth."
+      : 'Your custom BMI indicates you might benefit from nutritional support or building strength. Focus on energy-dense, premium-fuel meals and regular strength development.';
+    bmiTips = age < 18 ? [
+      'Focus on nutrient-dense foods like nut butters, whole milk yogurts, organic eggs, and avocados.',
+      'Ensure balanced, stress-free meal times with pleasant environments and positive food reinforcement.',
+      'Promote consistent outdoor play that builds bone density and muscle tone naturally.',
+      'Consult a pediatrician to monitor growth tracks and investigate potential nutrition variations.'
+    ] : [
       'Focus on nutrient-dense meals with nourishing healthy fats (avocados, nuts, seeds).',
       'Integrate light resistance training to stimulate healthy muscle mass generation.',
       'Sustain hydration with wellness-packed smoothies and pure water.',
       'Consider consulting a qualified nutritionist or healthcare provider to optimize your energy absorption.'
     ];
-  } else if (roundedBmi >= 18.5 && roundedBmi < 25) {
+  } else if (roundedBmi >= healthyMinBmi && roundedBmi <= healthyMaxBmi) {
     bmiCategory = 'Healthy Weight';
-    bmiRangeText = '18.5 - 24.9';
-    bmiExplanation = 'Superb balance! Your weight perfectly supports your frame. Keep nurturing this with fresh habits, sound sleep patterns, and active days.';
-    bmiTips = [
+    bmiRangeText = `${formattedMin} - ${formattedMax}`;
+    bmiExplanation = age < 18
+      ? 'Wonderful! Your child is at a perfectly balanced physical standard for height and development stage.'
+      : 'Superb balance! Your weight perfectly supports your frame. Keep nurturing this with fresh habits, sound sleep patterns, and active days.';
+    bmiTips = age < 18 ? [
+      'Encourage continuous dynamic play of at least 60 minutes daily.',
+      'Ensure high-nutrition balance with fresh fruits, colorful vegetables, and complete proteins.',
+      'Maintain an eye-safe and screen-free sleep schedule of 9 to 11 hours depending on age.',
+      'Keep hydrated with fresh clean water, avoiding high-sugar juice beverages.'
+    ] : [
       'Maintain your excellent routine with mixed cardiovascular and strength movements.',
       'Nourish your recovery with 7 to 9 hours of uninterrupted sleep every night.',
       'Stay hydrated, targeting 2.5 to 3 liters of fresh drinking water daily.',
       'Incorporate a colorful palette of micronutrient-dense whole foods.'
     ];
-  } else if (roundedBmi >= 25 && roundedBmi < 30) {
+  } else if (roundedBmi > healthyMaxBmi && roundedBmi < (healthyMaxBmi + 3.1)) {
     bmiCategory = 'Overweight';
-    bmiRangeText = '25.0 - 29.9';
-    bmiExplanation = 'Your mass is slightly in excess of standard benchmarks. A few small, nurturing lifestyle adjustments like micro-walks and continuous resistance work will yield tremendous benefits.';
-    bmiTips = [
+    bmiRangeText = `${Math.round((healthyMaxBmi + 0.1) * 10) / 10} - ${Math.round((healthyMaxBmi + 3.0) * 10) / 10}`;
+    bmiExplanation = age < 18
+      ? "The BMI falls into the overweight percentile for the child's growth track. Focus on active, nourishing habits and active outdoor play rather than food restriction."
+      : 'Your mass is slightly in excess of standard benchmarks. A few small, nurturing lifestyle adjustments like micro-walks and continuous resistance work will yield tremendous benefits.';
+    bmiTips = age < 18 ? [
+      'Engage in family-centered outdoor fun, active walks, and active playground activities.',
+      'Serve water as the primary beverage, eliminating sodas, mocktails, and juices completely.',
+      'Ensure meals are structured around fresh proteins and hearty fiber.',
+      'Focus on joyful movement and positive growth support rather than calorie counting.'
+    ] : [
       'Enrich daily activity with an extra 20-30 minute active walk or active cycling.',
       'Increase protein intake slightly to stabilize blood sugar and support muscle tissue.',
       'Prioritize drinking water prior to meals to support optimal metabolic digestion.',
@@ -76,9 +176,16 @@ export function calculateMetrics(profile: UserProfile): CalculationResult {
     ];
   } else {
     bmiCategory = 'Obese Range';
-    bmiRangeText = '30.0 or higher';
-    bmiExplanation = 'Prioritizing cardiovascular safety and movement variation can return your weight to an comfortable, low-stress range. This is about deep energy longevity, high joint comfort, and absolute vitality.';
-    bmiTips = [
+    bmiRangeText = `${formattedObese} or higher`;
+    bmiExplanation = age < 18
+      ? 'The BMI is in the elevated pediatric percentile. Compassionate, regular healthy habits can support safe cardiac and tissue growth.'
+      : 'Prioritizing cardiovascular safety and movement variation can return your weight to an comfortable, low-stress range. This is about deep energy longevity, high joint comfort, and absolute vitality.';
+    bmiTips = age < 18 ? [
+      'Support at least 60 minutes of low-impact, joyful movement (active swimming, active family bicycling).',
+      'Replace highly processed simple carbohydrates and sugars with whole fiber options (berries, apples, carrots).',
+      'Encourage regular, nurturing bedtime schedules to aid endocrine metabolic regulation.',
+      'Collaborate with a caring pediatrician or pediatric specialist to map key goals.'
+    ] : [
       'Engage in low-impact aerobics (swimming, elliptical, fast walking) to support joints.',
       'Incorporate consistent whole-body resistance workouts twice a week.',
       'Reduce processed added sugars entirely; focus on dynamic dietary fibers.',
@@ -88,9 +195,23 @@ export function calculateMetrics(profile: UserProfile): CalculationResult {
 
   // 2. Body Fat Percentage (Formula: Deurenberg's BMI-based Estimation)
   // For adults: BF% = (1.20 * BMI) + (0.23 * Age) - (10.8 * Gender: male=1, female=0) - 5.4
+  // For pediatric ages < 15: BF% = (1.51 * BMI) - (0.70 * Age) - (3.6 * Gender: male=1, female=0) + 1.4
   const genderFactor = gender === 'male' ? 1 : 0;
-  const bfValue = (1.20 * roundedBmi) + (0.23 * age) - (10.8 * genderFactor) - 5.4;
-  const roundedBf = Math.max(2, Math.round(bfValue * 10) / 10);
+  let bfValue = 0;
+  if (age < 15) {
+    bfValue = (1.51 * roundedBmi) - (0.70 * age) - (3.6 * genderFactor) + 1.4;
+  } else {
+    bfValue = (1.20 * roundedBmi) + (0.23 * age) - (10.8 * genderFactor) - 5.4;
+  }
+  
+  // Apply healthy, physiologically realistic floors and ceilings to prevent glitches
+  let minBf = 5;
+  if (age >= 18) {
+    minBf = gender === 'male' ? 3 : 10;
+  } else {
+    minBf = gender === 'male' ? 6 : 12;
+  }
+  const roundedBf = Math.min(80, Math.max(minBf, Math.round(bfValue * 10) / 10));
   
   let bfCategory = '';
   let bfRangeText = '';
@@ -342,9 +463,10 @@ export function calculateMetrics(profile: UserProfile): CalculationResult {
     };
   }
 
-  // 6. Healthy Weight Range based on healthy BMI boundaries (18.5 to 24.9)
-  const minWeight = Math.round(18.5 * heightM * heightM * 10) / 10;
-  const maxWeight = Math.round(24.9 * heightM * heightM * 10) / 10;
+  // 6. Healthy Weight Range based on healthy BMI boundaries (pediatric-aware)
+  const { min: healthyMinBmiValue, max: healthyMaxBmiValue } = getHealthyBmiRangeForAge(age, gender);
+  const minWeight = Math.round(healthyMinBmiValue * heightM * heightM * 10) / 10;
+  const maxWeight = Math.round(healthyMaxBmiValue * heightM * heightM * 10) / 10;
   
   let rangeMin = minWeight;
   let rangeMax = maxWeight;
@@ -356,26 +478,22 @@ export function calculateMetrics(profile: UserProfile): CalculationResult {
     displayUnit = 'lbs';
   }
 
-  // 7. Ideal Body Weight Calculations (Devine & Robinson Equations)
-  const htInches = height / 2.54;
-  const inchesOver5ft = Math.max(0, htInches - 60);
-  let devineIbw = 0;
-  let robinsonIbw = 0;
-  
-  if (gender === 'male') {
-    devineIbw = 50.0 + (2.3 * inchesOver5ft);
-    robinsonIbw = 52.0 + (1.9 * inchesOver5ft);
-  } else {
-    devineIbw = 45.5 + (2.3 * inchesOver5ft);
-    robinsonIbw = 49.0 + (1.7 * inchesOver5ft);
-  }
-
-  let finalDevine = Math.round(devineIbw * 10) / 10;
-  let finalRobinson = Math.round(robinsonIbw * 10) / 10;
+  // 7. Ideal Body Weight Calculations (utilizes unified pediatric-aware calculations)
+  const specialIdeals = calculateIdealWeightSpecial(height, age, gender);
+  let finalDevine = specialIdeals.devineKg;
+  let finalRobinson = specialIdeals.robinsonKg;
+  let finalMiller = specialIdeals.millerKg;
+  let finalHamwi = specialIdeals.hamwiKg;
+  let finalAgeAdjusted = specialIdeals.ageAdjustedBmiKg;
+  let finalRecommended = specialIdeals.recommendedKg;
 
   if (unitSystem === 'imperial') {
-    finalDevine = Math.round(devineIbw * 2.20462);
-    finalRobinson = Math.round(robinsonIbw * 2.20462);
+    finalDevine = Math.round(specialIdeals.devineKg * 2.20462);
+    finalRobinson = Math.round(specialIdeals.robinsonKg * 2.20462);
+    finalMiller = Math.round(specialIdeals.millerKg * 2.20462);
+    finalHamwi = Math.round(specialIdeals.hamwiKg * 2.20462);
+    finalAgeAdjusted = Math.round(specialIdeals.ageAdjustedBmiKg * 2.20462);
+    finalRecommended = Math.round(specialIdeals.recommendedKg * 2.20462);
   }
 
   return {
@@ -417,6 +535,10 @@ export function calculateMetrics(profile: UserProfile): CalculationResult {
     idealWeight: {
       devine: finalDevine,
       robinson: finalRobinson,
+      miller: finalMiller,
+      hamwi: finalHamwi,
+      ageAdjusted: finalAgeAdjusted,
+      recommended: finalRecommended,
       unit: displayUnit
     }
   };
@@ -509,47 +631,70 @@ export function calculateIdealWeightSpecial(
   age: number,
   gender: 'male' | 'female'
 ): IdealWeightSpecialOutput {
+  const heightM = heightCm / 100;
   const heightInches = heightCm / 2.54;
-  const inchesOver5ft = Math.max(0, heightInches - 60);
 
-  // 1. Devine Equation (1974)
+  const minBmiKg = 18.5 * (heightM * heightM);
+
+  if (age < 18) {
+    // Under 18: Use pediatric median healthy BMI from standard CDC/WHO charts based on age and sex
+    const targetBmi = getPediatricMedianBmi(age, gender);
+    const baselineIbw = targetBmi * (heightM * heightM);
+
+    // Provide safe, scaled outputs for comparison tables
+    return {
+      devineKg: Math.round(baselineIbw * 0.98 * 10) / 10,
+      robinsonKg: Math.round(baselineIbw * 1.01 * 10) / 10,
+      millerKg: Math.round(baselineIbw * 1.04 * 10) / 10,
+      hamwiKg: Math.round(baselineIbw * 0.95 * 10) / 10,
+      ageAdjustedBmiKg: Math.round(baselineIbw * 10) / 10,
+      recommendedKg: Math.round(baselineIbw * 10) / 10,
+    };
+  }
+
+  // Adults (age >= 18) -- Standard linear equations but clamped to at least BMI 18.5
+  // to ensure they remain perfectly healthy, non-negative, and clinically safe across all heights
+  const inchesOver5ft = heightInches - 60;
+
+  // Devine Equation (1974)
   let devineKg = 0;
   if (gender === 'male') {
     devineKg = 50.0 + (2.3 * inchesOver5ft);
   } else {
     devineKg = 45.5 + (2.3 * inchesOver5ft);
   }
+  devineKg = Math.max(minBmiKg, devineKg);
 
-  // 2. Robinson Equation (1983)
+  // Robinson Equation (1983)
   let robinsonKg = 0;
   if (gender === 'male') {
     robinsonKg = 52.0 + (1.9 * inchesOver5ft);
   } else {
     robinsonKg = 49.0 + (1.7 * inchesOver5ft);
   }
+  robinsonKg = Math.max(minBmiKg, robinsonKg);
 
-  // 3. Miller Equation (1983)
+  // Miller Equation (1983)
   let millerKg = 0;
   if (gender === 'male') {
     millerKg = 56.2 + (1.41 * inchesOver5ft);
   } else {
     millerKg = 53.1 + (1.36 * inchesOver5ft);
   }
+  millerKg = Math.max(minBmiKg, millerKg);
 
-  // 4. Hamwi Equation (1964)
+  // Hamwi Equation (1964)
   let hamwiKg = 0;
   if (gender === 'male') {
     hamwiKg = 48.0 + (2.7 * inchesOver5ft);
   } else {
     hamwiKg = 45.5 + (2.2 * inchesOver5ft);
   }
+  hamwiKg = Math.max(minBmiKg, hamwiKg);
 
-  // 5. Age-Adjusted Healthy BMI Target (Dynamic metabolic reserve adjusted for age decades)
-  // Studies show that a slightly higher BMI target is highly beneficial for longevity as age increases.
+  // Age-Adjusted Healthy BMI Target (Dynamic metabolic reserve adjusted for age decades)
   let targetBmi = 21.7; // Baseline healthy target
-  if (age < 18) {
-    targetBmi = gender === 'male' ? 20.2 : 19.6;
-  } else if (age >= 18 && age <= 24) {
+  if (age >= 18 && age <= 24) {
     targetBmi = gender === 'male' ? 21.4 : 20.8;
   } else if (age >= 25 && age <= 34) {
     targetBmi = gender === 'male' ? 22.0 : 21.4;
@@ -563,7 +708,6 @@ export function calculateIdealWeightSpecial(
     targetBmi = gender === 'male' ? 24.5 : 23.9;
   }
 
-  const heightM = heightCm / 100;
   const ageAdjustedBmiKg = targetBmi * (heightM * heightM);
 
   // Blend Recommended weight dynamically:
