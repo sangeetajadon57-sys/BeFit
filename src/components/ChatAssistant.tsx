@@ -60,9 +60,8 @@ export default function ChatAssistant({ userProfile, currentMetrics }: ChatAssis
 
       const systemPrompt = `You are an expert fitness coach and nutritionist. User Profile: ${JSON.stringify(userProfile)}. Current Metrics: ${JSON.stringify(currentMetrics)}. Chat History:\n${chatHistory}\nModel:`;
 
-      const apiKey = "import.meta.env.VITE_GEMINI_API_KEY";
-      const cleanKey = apiKey.replace(/['"]/g, '');
-      
+      const cleanKey = import.meta.env.VITE_GEMINI_API_KEY;
+             
       const response = await fetch(`https://googleapis.com{cleanKey}`, {
         method: 'POST',
         headers: {
