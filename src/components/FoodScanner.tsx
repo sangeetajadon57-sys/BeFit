@@ -187,23 +187,39 @@ export default function FoodScanner({ onAddCalories }: FoodScannerProps) {
     // 25 second timeout (generous for camera captures or higher resolution formats over mobile bands)
     const timeoutId = setTimeout(() => controller.abort(), 25050);
 
-    try {
-      // APK endpoint path resolution (routes to remote production server if locally embedded)
-      const targetApiUrl = getApiUrl('/api/analyze-food');
+        try {
+      const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+      const cleanKey = apiKey ? apiKey.replace(/['"]/g, '').trim() : '';
 
-      const res = await fetch(targetApiUrl, {
+      const base64Clean = base64Data.includes(',') ? base64Data.split(',')[1] : base64Data;
+
+      const promptText = "Analyze this food item image. Identify the dish, estimate the portion size, calculate total calories, and provide a quick breakdown of protein, carbs, and fats in a clean JSON format compatible with the app database.";
+
+      const res = await fetch(`https://googleapis.com{cleanKey}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image: base64Data, mimeType }),
+        body: JSON.stringify({
+          contents: [{
+            parts: [
+              { text: promptText },
+              { inlineData: { data: base64Clean, mimeType: mimetype || 'image/jpeg' } }
+            ]
+          }]
+        }),
         signal: controller.signal
       });
-
+          
       clearTimeout(timeoutId);
 
       if (!res.ok) {
         throw new Error('Calorie engine communication issue.');
       }
-
+      const geminiData = await res.json();
+      const rawText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      
+      // Artificial fake object conversion to mimic your original Express proxy framework formatting
+      const data = { success: true, analysis: rawText };
+          
       const data: FoodScanResult = await res.json();
       
       if (!data.isFood) {
