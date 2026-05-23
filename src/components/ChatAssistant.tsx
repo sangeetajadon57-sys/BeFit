@@ -53,16 +53,23 @@ export default function ChatAssistant({ userProfile, currentMetrics }: ChatAssis
     setMessages((prev) => [...prev, userMsg]);
     setIsQuerying(true);
 
-    try {
-      const chatHistory = [...messages, userMsg];
+          try {
+      const chatHistory = [...messages, userMsg].map(m => 
+        `${m.sender === 'user' ? 'User' : 'Model'}: ${m.text}`
+      ).join('\n');
 
-      const response = await fetch('/api/chat', {
+      const systemPrompt = `You are an expert fitness coach and nutritionist. User Profile: ${JSON.stringify(userProfile)}. Current Metrics: ${JSON.stringify(currentMetrics)}. Chat History:\n${chatHistory}\nModel:`;
+
+      const apiKey = "import.meta.env.VITE_GEMINI_API_KEY";
+      const cleanKey = apiKey.replace(/['"]/g, '');
+      
+      const response = await fetch(`https://googleapis.com{cleanKey}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json'
+        },
         body: JSON.stringify({
-          messages: chatHistory,
-          userProfile,
-          currentMetrics
+          contents: [{ parts: [{ text: systemPrompt }] }]
         })
       });
 
@@ -71,7 +78,15 @@ export default function ChatAssistant({ userProfile, currentMetrics }: ChatAssis
       }
 
       const data = await response.json();
-      
+      const aiResponseText = data.candidates?.[0]?.content?.parts?.[0]?.text || "I'm having trouble processing that advice right now.";
+
+      const assistantMsg: Message = {
+        id: Math.random().toString(36).substr(2, 9),
+        sender: 'assistant',
+        text: aiResponseText,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      };
+            
       const assistantMsg: Message = {
         id: Math.random().toString(36).substr(2, 9),
         sender: 'assistant',
