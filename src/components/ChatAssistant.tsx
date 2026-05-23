@@ -53,7 +53,7 @@ export default function ChatAssistant({ userProfile, currentMetrics }: ChatAssis
     setMessages((prev) => [...prev, userMsg]);
     setIsQuerying(true);
 
-          try {
+           try {
       const chatHistory = [...messages, userMsg].map(m => 
         `${m.sender === 'user' ? 'User' : 'Model'}: ${m.text}`
       ).join('\n');
@@ -78,15 +78,14 @@ export default function ChatAssistant({ userProfile, currentMetrics }: ChatAssis
       }
 
       const data = await response.json();
-      const aiResponseText = data.candidates?.[0]?.content?.parts?.[0]?.text || "I'm having trouble processing that advice right now.";
-  
+      const aiResponseText = data.candidates[0]?.content?.parts[0]?.text || "I'm having trouble processing that advice right now.";
+
       const assistantMsg: Message = {
         id: Math.random().toString(36).substr(2, 9),
         sender: 'assistant',
         text: aiResponseText,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       };
-            
       const assistantMsg: Message = {
         id: Math.random().toString(36).substr(2, 9),
         sender: 'assistant',
