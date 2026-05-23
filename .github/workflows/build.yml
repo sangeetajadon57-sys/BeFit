@@ -1,0 +1,79 @@
+name: Build APK
+on: [push, workflow_dispatch]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Clean Install NPM Packages
+        run: |
+          npm install
+          npm install @capacitor/core@6 @capacitor/cli@6 @capacitor/android@6
+
+      - name: Force Patch Mobile Image Formats
+        run: |
+          # 1. Inject your secret API Key into the codebase files cleanly
+          find src/ -type f -exec sed -i 's/process.env.VITE_GEMINI_API_KEY/"${{ secrets.VITE_GEMINI_API_KEY }}"/g' {} +
+          find src/ -type f -exec sed -i 's/import.meta.env.VITE_GEMINI_API_KEY/"${{ secrets.VITE_GEMINI_API_KEY }}"/g' {} +
+          find src/ -type f -exec sed -i 's/process.env.GEMINI_API_KEY/"${{ secrets.VITE_GEMINI_API_KEY }}"/g' {} +
+          
+          # 2. Inject a standard utility helper at the top of the food scanner to translate local mobile file streams
+          find src/ -type f -name "FoodScanner.tsx" -exec sed -i '1s/^/async function localFileToGenPart(url) { const res = await fetch(url); const blob = await res.blob(); return new Promise((resolve) => { const reader = new FileReader(); reader.onloadend = () => resolve({ inlineData: { data: reader.result.split(",")[1], mimeType: blob.type } }); reader.readAsDataURL(blob); }); }\n/' {} +
+          
+          # 3. Modify the server arguments array to evaluate the helper string conversion dynamically
+          find src/ -type f -name "FoodScanner.tsx" -exec sed -i 's/generateContent(\[prompt, image\])/generateContent([prompt, await localFileToGenPart(image)])/g' {} +
+          find src/ -type f -name "FoodScanner.tsx" -exec sed -i 's/generateContent(\[prompt, photo\])/generateContent([prompt, await localFileToGenPart(photo)])/g' {} +
+
+      - name: Build Web Code
+        run: |
+          npm run build --if-present
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Fresh Mobile Platform Generation
+        run: |
+          rm -rf android
+          npx cap init "Be Fit AI" "com.befit.app" --web-dir=dist
+          npx cap add android
+
+      - name: Open Full Mobile Data and Camera Access
+        run: |
+          sed -i '/<application/i \    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />\n    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />' android/app/src/main/AndroidManifest.xml
+          sed -i 's/<application/<application android:usesCleartextTraffic="true" android:networkSecurityConfig="@xml\/network_security_config"/g' android/app/src/main/AndroidManifest.xml
+          
+          mkdir -p android/app/src/main/res/xml
+          cat <<EOF > android/app/src/main/res/xml/network_security_config.xml
+          <?xml version="1.0" encoding="utf-8"?>
+          <network-security-config>
+              <base-config cleartextTrafficAllowed="true">
+                  <trust-anchors>
+                      <certificates src="system" />
+                  </trust-anchors>
+              </base-config>
+          </network-security-config>
+          EOF
+
+      - name: Sync and Build App Binary
+        run: |
+          npx cap sync
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MyMobileApp
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          
