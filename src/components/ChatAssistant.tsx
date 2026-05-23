@@ -153,5 +153,5 @@ export default function ChatAssistant({ userProfile, currentMetrics }: ChatAssis
         </button>
       </div>
     </div>
-  ); 
+  );
 }
