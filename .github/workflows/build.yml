@@ -1,10 +1,17 @@
 name: Build APK
 on: [push, workflow_dispatch]
+
+# This gives the cloud runner explicit permission to read your code files without failing
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-node@v4
         with:
