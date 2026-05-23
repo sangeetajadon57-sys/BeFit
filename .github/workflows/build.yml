@@ -15,12 +15,13 @@ jobs:
           npm install
           npm install @capacitor/core@6 @capacitor/cli@6 @capacitor/android@6
 
-      - name: Force Hardcode API Key into App Source Code
+      - name: Hardcode API Key Everywhere
         run: |
-          # This command hunts down variable placeholders inside App.tsx and patches your secret key directly into the code
-          sed -i 's/process.env.VITE_GEMINI_API_KEY/"${{ secrets.VITE_GEMINI_API_KEY }}"/g' src/App.tsx
-          sed -i 's/import.meta.env.VITE_GEMINI_API_KEY/"${{ secrets.VITE_GEMINI_API_KEY }}"/g' src/App.tsx
-          sed -i 's/process.env.GEMINI_API_KEY/"${{ secrets.VITE_GEMINI_API_KEY }}"/g' src/App.tsx
+          # This will scan every single file in your src folder and forcefully insert your real key
+          find src/ -type f -exec sed -i 's/process.env.VITE_GEMINI_API_KEY/"${{ secrets.VITE_GEMINI_API_KEY }}"/g' {} +
+          find src/ -type f -exec sed -i 's/import.meta.env.VITE_GEMINI_API_KEY/"${{ secrets.VITE_GEMINI_API_KEY }}"/g' {} +
+          find src/ -type f -exec sed -i 's/process.env.GEMINI_API_KEY/"${{ secrets.VITE_GEMINI_API_KEY }}"/g' {} +
+          find src/ -type f -exec sed -i 's/import.meta.env.GEMINI_API_KEY/"${{ secrets.VITE_GEMINI_API_KEY }}"/g' {} +
           echo "VITE_GEMINI_API_KEY=${{ secrets.VITE_GEMINI_API_KEY }}" > .env
           echo "GEMINI_API_KEY=${{ secrets.VITE_GEMINI_API_KEY }}" >> .env
 
@@ -39,10 +40,23 @@ jobs:
           npx cap init "Be Fit AI" "com.befit.app" --web-dir=dist
           npx cap add android
 
-      - name: Safe Inject Camera & Network Permissions
+      - name: Open System Network and Camera Access
         run: |
-          sed -i '/<application/i \    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-permission android:name="android.permission.RECORD_AUDIO" />\n    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />\n    <uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />' android/app/src/main/AndroidManifest.xml
-          sed -i 's/<application/<application android:usesCleartextTraffic="true"/g' android/app/src/main/AndroidManifest.xml
+          sed -i '/<application/i \    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-permission android:name="android.permission.RECORD_AUDIO" />\n    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />\n    <uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />\n    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />' android/app/src/main/AndroidManifest.xml
+          sed -i 's/<application/<application android:usesCleartextTraffic="true" android:networkSecurityConfig="@xml\/network_security_config"/g' android/app/src/main/AndroidManifest.xml
+          
+          # Create a custom security rule to prevent Android from blocking the Google AI endpoint link
+          mkdir -p android/app/src/main/res/xml
+          cat <<EOF > android/app/src/main/res/xml/network_security_config.xml
+          <?xml version="1.0" encoding="utf-8"?>
+          <network-security-config>
+              <base-config cleartextTrafficAllowed="true">
+                  <trust-anchors>
+                      <certificates src="system" />
+                  </trust-anchors>
+              </base-config>
+          </network-security-config>
+          EOF
 
       - name: Sync and Build App Binary
         run: |
