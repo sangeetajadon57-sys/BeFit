@@ -70,12 +70,11 @@ app.post("/api/analyze-food", async (req, res) => {
 
     const promptText = `Analyze this image to detect if it contains listable food items, meals, solid/liquid nutrition, raw ingredients, or restaurant dishes.
 If the image is NOT food or drink (e.g., text, documents, animals, clothes, screenshots of apps, landscape, a car, or faces with no food visible), set isFood: false with an appropriate explanation in rejectedReason. Be strictly helpful but clear.
-If it is food, estimate:
-1. Detected Food Name (the name of the food/dish).
-2. Approximate calories (kcal), protein (g), carbs (g), and fat (g).
-3. Portion estimate based on the image size.
-4. Confidence score (0-100) reflecting visibility and portion clarity.
-5. Alternatives or other suggestions in case the user wants to adjust (up to 3 items).
+
+If it is food, provide an incredibly accurate, perfect, and comprehensive nutritional breakdown:
+1. Estimate calories, protein (g), carbs (g), and fat (g) precisely matching the exact physical portion size and quantity visible in the image.
+2. In 'quantityAnalysis', analyze the exact quantity visible in the photo (e.g., counting items, judging relative plate scale, checking bowl depth) and explicitly mention it in your explanation (e.g., 'We analyzed the image and identified exactly 1 medium-sized red apple of about 150g' or 'We detected exactly two whole fried eggs side-by-side on the plate, totaling around 110g...').
+3. Detail all relevant vitamins, minerals, and other critical nutrients (like Dietary Fiber, Sodium, Sugar, Iron, Calcium, Zinc, Vitamin A/C/D/B-complex) in 'microNutrients'. Calibrate their amounts specifically to the quantity of food visible in the image.
 
 Formulate instructions in clear, positive, and wellness-focused language.`;
 
@@ -96,6 +95,20 @@ Formulate instructions in clear, positive, and wellness-focused language.`;
             fat: { type: Type.NUMBER, description: "Estimated fat in grams." },
             portionEstimate: { type: Type.STRING, description: "Visual portion size, e.g., '1 average plate', 'about 150g', '2 slices'." },
             confidenceScore: { type: Type.INTEGER, description: "Prediction confidence percentage, e.g. 85." },
+            quantityAnalysis: { type: Type.STRING, description: "Analysis explaining how the portion and exact quantity in the image was identified and what visual elements were used to calculate it." },
+            microNutrients: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  name: { type: Type.STRING, description: "Name of the nutrient (e.g. Vitamin C, Vitamin A, Calcium, Iron, Dietary Fiber, Sodium, Potassium, Sugar, Vitamin B12, Zinc)." },
+                  value: { type: Type.STRING, description: "Estimated nutrient value with units (e.g., '15mg', '4.2g', '350mg', '12mcg')." },
+                  category: { type: Type.STRING, description: "The category level. Must be one of: 'vitamin', 'mineral', or 'other'." }
+                },
+                required: ["name", "value", "category"]
+              },
+              description: "Array of all estimated vitamins, minerals and core nutrients found in this portion."
+            },
             suggestions: {
               type: Type.ARRAY,
               items: { type: Type.STRING },

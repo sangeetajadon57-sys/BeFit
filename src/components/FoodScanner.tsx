@@ -871,6 +871,82 @@ export default function FoodScanner({ onAddCalories }: FoodScannerProps) {
               </div>
             </div>
 
+            {/* Visual Quantity Identification details */}
+            {scanResult.quantityAnalysis && (
+              <div id="quantity-scan-analysis" className="bg-emerald-500/5 border border-emerald-500/15 p-4 rounded-xl space-y-1.5 shadow-sm">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-400 font-mono uppercase tracking-wider">
+                  <Sparkles className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
+                  <span>Image Portion & Quantity Analysis</span>
+                </div>
+                <p className="text-xs text-slate-350 font-light leading-relaxed">
+                  {scanResult.quantityAnalysis}
+                </p>
+              </div>
+            )}
+
+            {/* Vitamins, Minerals & All Nutrients details */}
+            {scanResult.microNutrients && scanResult.microNutrients.length > 0 && (
+              <div id="micronutrients-detail-grid" className="bg-white/5 border border-white/10 p-4 rounded-xl space-y-3.5 shadow-sm">
+                <div className="flex justify-between items-center border-b border-white/10 pb-2">
+                  <span className="text-xs font-bold text-white uppercase tracking-wider font-mono">Vitamins, Minerals & Nutrient Profile</span>
+                  <span className="text-[10px] text-slate-400 font-mono">Calibrated to visual portion</span>
+                </div>
+                
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  {/* Vitamins Column */}
+                  <div className="space-y-2">
+                    <span className="text-[10px] font-bold text-indigo-300 uppercase tracking-wider font-mono block border-b border-white/5 pb-1">Vitamins</span>
+                    <div className="space-y-1.5">
+                      {scanResult.microNutrients.filter(m => m.category === 'vitamin').length > 0 ? (
+                        scanResult.microNutrients.filter(m => m.category === 'vitamin').map((nut, idx) => (
+                          <div key={idx} className="flex justify-between items-center text-xs">
+                            <span className="text-slate-400">{nut.name}</span>
+                            <span className="font-mono font-bold text-indigo-200">{nut.value}</span>
+                          </div>
+                        ))
+                      ) : (
+                        <span className="text-[10px] text-slate-505 italic block">None detected or trace</span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Minerals Column */}
+                  <div className="space-y-2">
+                    <span className="text-[10px] font-bold text-emerald-300 uppercase tracking-wider font-mono block border-b border-white/5 pb-1">Minerals</span>
+                    <div className="space-y-1.5">
+                      {scanResult.microNutrients.filter(m => m.category === 'mineral').length > 0 ? (
+                        scanResult.microNutrients.filter(m => m.category === 'mineral').map((nut, idx) => (
+                          <div key={idx} className="flex justify-between items-center text-xs border-white/5">
+                            <span className="text-slate-400">{nut.name}</span>
+                            <span className="font-mono font-bold text-emerald-200">{nut.value}</span>
+                          </div>
+                        ))
+                      ) : (
+                        <span className="text-[10px] text-slate-505 italic block">None detected or trace</span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Other Nutrients Column */}
+                  <div className="space-y-2">
+                    <span className="text-[10px] font-bold text-amber-300 uppercase tracking-wider font-mono block border-b border-white/5 pb-1">Other Dietary Factors</span>
+                    <div className="space-y-1.5">
+                      {scanResult.microNutrients.filter(m => m.category === 'other').length > 0 ? (
+                        scanResult.microNutrients.filter(m => m.category === 'other').map((nut, idx) => (
+                          <div key={idx} className="flex justify-between items-center text-xs">
+                            <span className="text-slate-400">{nut.name}</span>
+                            <span className="font-mono font-bold text-amber-200">{nut.value}</span>
+                          </div>
+                        ))
+                      ) : (
+                        <span className="text-[10px] text-slate-505 italic block">Trace amounts or standard values</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Slider tuning controls */}
             {isTuningMode && (
               <motion.div 

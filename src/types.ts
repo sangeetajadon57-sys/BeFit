@@ -76,6 +76,12 @@ export interface CalculationResult {
   };
 }
 
+export interface MicroNutrient {
+  name: string;
+  value: string; // e.g., '1.2mg', '45mcg', '350mg', '12g'
+  category: 'vitamin' | 'mineral' | 'other'; // e.g., fiber, sugar, sodium are other
+}
+
 export interface FoodScanResult {
   isFood: boolean;
   detectedFoodName: string;
@@ -87,6 +93,8 @@ export interface FoodScanResult {
   confidenceScore: number;
   suggestions: string[];
   rejectedReason?: string;
+  quantityAnalysis?: string; // Analysis of the specific quantity shown in the image or portion size
+  microNutrients?: MicroNutrient[]; // Vitamins, minerals and other nutrients
 }
 
 export interface Message {
