@@ -15,19 +15,9 @@ jobs:
           npm install
           npm install @capacitor/core@6 @capacitor/cli@6 @capacitor/android@6
 
-      - name: Inject Secret API Key Everywhere
+      - name: Build Web Code
         run: |
-          find src/ -type f -exec sed -i 's/process.env.VITE_GEMINI_API_KEY/"${{ secrets.VITE_GEMINI_API_KEY }}"/g' {} +
-          find src/ -type f -exec sed -i 's/import.meta.env.VITE_GEMINI_API_KEY/"${{ secrets.VITE_GEMINI_API_KEY }}"/g' {} +
-          find src/ -type f -exec sed -i 's/process.env.GEMINI_API_KEY/"${{ secrets.VITE_GEMINI_API_KEY }}"/g' {} +
-          find src/ -type f -exec sed -i 's/import.meta.env.GEMINI_API_KEY/"${{ secrets.VITE_GEMINI_API_KEY }}"/g' {} +
-
-      - name: Build Web Code without Heavy Optimization
-        env:
-          NODE_OPTIONS: "--max-old-space-size=4096"
-        run: |
-          # Adding flags to stop the bundler from compressing too tightly and running out of memory
-          npm run build --if-present -- --no-minify || npm run build --if-present
+          npm run build --if-present
 
       - uses: actions/setup-java@v4
         with:
