@@ -29,40 +29,14 @@ jobs:
           rm -rf android
           npx cap init "Be Fit AI" "com.befit.app" --web-dir=dist
           npx cap add android
+
+      - name: Safe Inject Camera Permissions
+        run: |
+          sed -i '/<application/i \    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-permission android:name="android.permission.RECORD_AUDIO" />\n    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />' android/app/src/main/AndroidManifest.xml
+
+      - name: Sync and Build App Binary
+        run: |
           npx cap sync
-
-      - name: Inject Native Android Camera Permissions
-        run: |
-          cat <<EOF > android/app/src/main/AndroidManifest.xml
-          <?xml version="1.0" encoding="utf-8"?>
-          <manifest xmlns:android="http://android.com">
-              <uses-permission android:name="android.permission.CAMERA" />
-              <uses-permission android:name="android.permission.RECORD_AUDIO" />
-              <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
-              <application
-                  android:allowBackup="true"
-                  android:icon="@mipmap/ic_launcher"
-                  android:label="Be Fit AI"
-                  android:roundIcon="@mipmap/ic_launcher_round"
-                  android:supportsRtl="true"
-                  android:theme="@style/AppTheme">
-                  <activity
-                      android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|layoutDirection|fontScale|screenLayout|density|smallestScreenSize"
-                      android:name="com.befit.app.MainActivity"
-                      android:label="Be Fit AI"
-                      android:theme="@style/AppTheme.NoActionBar"
-                      android:exported="true">
-                      <intent-filter>
-                          <action android:name="android.intent.action.MAIN" />
-                          <category android:name="android.intent.category.LAUNCHER" />
-                      </intent-filter>
-                  </activity>
-              </application>
-          </manifest>
-          EOF
-
-      - name: Build Android App Binary
-        run: |
           cd android
           chmod +x gradlew
           ./gradlew assembleDebug --no-daemon
