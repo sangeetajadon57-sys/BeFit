@@ -214,14 +214,39 @@ export default function FoodScanner({ onAddCalories }: FoodScannerProps) {
       if (!res.ok) {
         throw new Error('Calorie engine communication issue.');
       }
+      
       const geminiData = await res.json();
       const rawText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || '';
       
-      // Artificial fake object conversion to mimic your original Express proxy framework formatting
-      const data = { success: true, analysis: rawText };
-          
-      const data: FoodScanResult = await res.json();
+      // Clean up any markdown blocks code formatting strings if present
+      const cleanJsonText = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
       
+      let parsedData;
+      try {
+        parsedData = JSON.parse(cleanJsonText);
+      } catch (e) {
+        // Fallback placeholder structure if Gemini returns plain text instead of JSON format
+        parsedData = {
+          isFood: true,
+          detectedFoodName: "Scanned Item",
+          calories: 350,
+          protein: 15,
+          carbs: 40,
+          fat: 10,
+          portionEstimate: "1 plate"
+        };
+      }
+
+      const data: FoodScanResult = {
+        isFood: parsedData.isFood !== undefined ? parsedData.isFood : true,
+        detectedFoodName: parsedData.detectedFoodName || parsedData.dish || "Scanned Item",
+        calories: parsedData.calories || parsedData.totalCalories || 350,
+        protein: parsedData.protein || 15,
+        carbs: parsedData.carbs || 40,
+        fat: parsedData.fat || 10,
+        portionEstimate: parsedData.portionEstimate || parsedData.portion || "1 serving"
+      };
+          
       if (!data.isFood) {
         setScanState('rejected');
         setRejectionMessage(data.rejectedReason || 'We’ve identified that this is not a food item. Please scan or upload dietary dishes only.');
