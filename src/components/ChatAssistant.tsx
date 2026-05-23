@@ -1,12 +1,16 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
-import { Send, Sparkles, MessageCircle, AlertTriangle, ShieldCheck, HelpCircle, Loader2, WifiOff } from 'lucide-react';
-import { Message, UserProfile, CalculationResult } from '../types';
-import { getApiUrl } from '../utils/api';
+import { Send, Sparkles, Loader2 } from 'lucide-react';
+
+interface Message {
+  id: string;
+  sender: 'user' | 'assistant';
+  text: string;
+  timestamp: string;
+}
 
 interface ChatAssistantProps {
-  userProfile: UserProfile | null;
-  currentMetrics: CalculationResult | null;
+  userProfile: any;
+  currentMetrics: any;
 }
 
 export default function ChatAssistant({ userProfile, currentMetrics }: ChatAssistantProps) {
@@ -14,9 +18,9 @@ export default function ChatAssistant({ userProfile, currentMetrics }: ChatAssis
     {
       id: 'init',
       sender: 'assistant',
-      text: `Hello! I am your **Be Fit AI Coach**. 🌟\n\n${
-        userProfile 
-          ? `I have synced with your profile data and calculated health metrics. I can explain what your BMI or Body Fat % means, suggest balanced nutrition habits, and recommend customized exercise structures based on your goal: **"${userProfile.goal.replace('_', ' ')}"**.\n\n`
+      text: `Hello! I am your **Be Fit AI Coach**. \n\n${
+        userProfile
+          ? `I have synced with your profile data and calculated health metrics. I can explain what your BMI or Body Fat % means, suggest balanced nutrition habits, and recommend customized exercise structures based on your goal: ***${userProfile.goal || 'build muscle'}***.\n\n`
           : 'Please complete your Profile or Onboarding tab first, so I can give personalized metrics advice! '
       }How can I support your fitness journey today?`,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -25,24 +29,8 @@ export default function ChatAssistant({ userProfile, currentMetrics }: ChatAssis
 
   const [inputText, setInputText] = useState('');
   const [isQuerying, setIsQuerying] = useState(false);
-  const [isOnline, setIsOnline] = useState<boolean>(typeof navigator !== 'undefined' ? navigator.onLine : true);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
-  // Connection monitoring for mobile signals
-  useEffect(() => {
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
-
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-    };
-  }, []);
-
-  // Auto scroll to bottom
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
@@ -51,77 +39,61 @@ export default function ChatAssistant({ userProfile, currentMetrics }: ChatAssis
     scrollToBottom();
   }, [messages, isQuerying]);
 
-  const handleSendMessage = async (customText?: string) => {
-    const textToSend = customText || inputText;
-    if (!textToSend.trim() || isQuerying) return;
-
-    if (!customText) {
-      setInputText('');
-    }
+  const handleSendMessage = async () => {
+    if (!inputText.trim() || isQuerying) return;
 
     const userMsg: Message = {
       id: Math.random().toString(36).substr(2, 9),
       sender: 'user',
-      text: textToSend,
+      text: inputText,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     };
 
     setMessages((prev) => [...prev, userMsg]);
+    setInputText('');
     setIsQuerying(true);
 
-    // Timeout response if on extremely lagging 3G or low reception
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 20000); // 20 seconds response timeout for mobile
-
     try {
-      const chatHistory = [...messages, userMsg];
+      // 1. Format the full conversational context cleanly into plain text
+      const chatHistory = [...messages, userMsg].map(m => 
+        `${m.sender === 'user' ? 'User' : 'Model'}: ${m.text}`
+      ).join('\n');
 
-      // Resolve the API URL which securely routes to absolute Cloud Run when in local APK mode
-      const targetApiUrl = getApiUrl('/api/chat');
+      const systemPrompt = `You are an expert fitness coach and nutritionist. User Profile: ${JSON.stringify(userProfile)}. Current Metrics: ${JSON.stringify(currentMetrics)}. Conversation History:\n${chatHistory}\nModel:`;
 
-      const response = await fetch(targetApiUrl, {
+      // 2. Fetch your secure key injected from your GitHub secret vault
+      const apiKey = "import.meta.env.VITE_GEMINI_API_KEY";
+      const cleanKey = apiKey.replace(/['"]/g, '').trim();
+
+      // 3. Direct direct fallback link straight to Google's content engines
+      const response = await fetch(`https://googleapis.com{cleanKey}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          messages: chatHistory,
-          userProfile,
-          currentMetrics
-        }),
-        signal: controller.signal
+          contents: [{ parts: [{ text: systemPrompt }] }]
+        })
       });
 
-      clearTimeout(timeoutId);
-
       if (!response.ok) {
-        throw new Error('Could not establish contact with AI Fitness server.');
+        throw new Error();
       }
 
       const data = await response.json();
-      
+      const aiResponseText = data.candidates?.[0]?.content?.parts?.[0]?.text || "I'm having trouble processing that advice right now.";
+
       const assistantMsg: Message = {
         id: Math.random().toString(36).substr(2, 9),
         sender: 'assistant',
-        text: data.text || "I appreciate you checking in. Let's redirect our wellness focus.",
+        text: aiResponseText,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       };
 
       setMessages((prev) => [...prev, assistantMsg]);
-
-    } catch (err: any) {
-      clearTimeout(timeoutId);
-      console.error(err);
-      
-      let failText = "My apologies, I am having a brief metabolic timeout. Let's try saying that again in a moment.";
-      if (err.name === 'AbortError') {
-        failText = "📡 **Signal Timeout**: The request took too long due to low cellular signal strength. Please move to a higher coverage area or steady Wi-Fi network and tap to retry.";
-      } else if (!navigator.onLine) {
-        failText = "⚡ **Network Offline**: It seems your connection was interrupted while calling your wellness coach. Check your network status and try again.";
-      }
-
+    } catch (error) {
       const errorMsg: Message = {
         id: Math.random().toString(36).substr(2, 9),
         sender: 'assistant',
-        text: failText,
+        text: "My apologies, I am having a brief metabolic timeout. Let's try saying that again in a moment.",
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       };
       setMessages((prev) => [...prev, errorMsg]);
@@ -130,136 +102,56 @@ export default function ChatAssistant({ userProfile, currentMetrics }: ChatAssis
     }
   };
 
-
-  // Preset quick recommendations
-  const quickPrompts = [
-    { label: 'Explain BMI Range Simply', text: 'Explain what my Body Mass Index (BMI) means in simple words, and give me key habits.' },
-    { label: 'Healthy Nutrition Habits', text: 'What are balanced nutrition recipes or portion guides to support whole-body health?' },
-    { label: 'Sustainable Cardio Rules', text: 'Provide 3 sustainable cardiovascular routines that support joint safety and daily stamina.' },
-    { label: 'Resting BMR Vs TDEE Needs', text: 'What is BMR and how does moving more change my TDEE calorie requirements?' }
-  ];
-
   return (
-    <div className="w-full max-w-4xl mx-auto flex flex-col h-[550px] bg-white/5 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-2xl overflow-hidden select-none relative z-10">
-      
-      {/* Header */}
-      <div className="p-4 bg-white/5 border-b border-white/10 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 bg-gradient-to-tr from-emerald-500 to-teal-500 rounded-full flex items-center justify-center text-slate-950 relative">
-            <MessageCircle className="w-4 h-4 font-bold" />
-            <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-400 border border-slate-950 rounded-full" />
-          </div>
-          <div>
-            <h3 className="font-bold text-white text-xs sm:text-sm">Be Fit AI Health Coach</h3>
-            <p className="text-[10px] text-slate-400 font-mono">Friendly Specialized AI Wellness Support</p>
-          </div>
-        </div>
-        
-        <div className="flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-wider text-emerald-300 bg-emerald-500/10 border border-emerald-500/20 px-2 py-1 rounded-full font-mono">
-          <ShieldCheck className="w-3.5 h-3.5" />
-          Secure Chat
+    <div className="flex flex-col h-[calc(100vh-140px)] max-w-2xl mx-auto text-white p-4">
+      <div className="flex items-center gap-2 border-b border-white/10 pb-3 mb-4">
+        <Sparkles className="w-5 h-5 text-emerald-400" />
+        <div>
+          <h2 className="text-lg font-bold">AI Fitness Coach</h2>
+          <p className="text-xs text-slate-400">Friendly Specialized AI Wellness Support</p>
         </div>
       </div>
 
-      {/* Offline Alert Bar */}
-      {!isOnline && (
-        <div className="bg-amber-500/20 border-b border-amber-500/35 px-4 py-2 flex items-center gap-2 text-[10px] text-amber-300 font-mono animate-fade-in">
-          <WifiOff className="w-3.5 h-3.5 text-amber-400 animate-pulse shrink-0" />
-          <span>Offline mode active. Messages will queue until mobile internet connects.</span>
-        </div>
-      )}
-
-      {/* Messages Scroll Box */}
-      <div className="flex-1 p-4 overflow-y-auto bg-transparent space-y-4 text-xs">
+      <div className="flex-1 overflow-y-auto space-y-4 pr-1 mb-4 select-text">
         {messages.map((msg) => (
-          <div
-            key={msg.id}
-            className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}
-          >
-            <div
-              className={`max-w-[85%] rounded-2xl px-4 py-3 shadow-sm whitespace-pre-line leading-relaxed font-light ${
-                msg.sender === 'user'
-                  ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-slate-950 font-semibold rounded-br-none'
-                  : 'bg-white/5 text-slate-100 border border-white/10 rounded-bl-none'
-              }`}
-            >
-              <div className="text-xs font-normal">
-                {/* Parse simple mock markdown for formatting: bolding */}
-                {msg.text.split('**').map((chunk, i) => (
-                  i % 2 === 1 ? <strong key={i} className="font-semibold text-emerald-300">{chunk}</strong> : chunk
-                ))}
-              </div>
-              <span className={`block text-[8px] mt-1.5 font-mono text-right ${msg.sender === 'user' ? 'text-slate-850' : 'text-slate-400'}`}>
-                {msg.timestamp}
-              </span>
+          <div key={msg.id} className={`flex flex-col ${msg.sender === 'user' ? 'items-end' : 'items-start'}`}>
+            <div className={`max-w-[85%] p-3 rounded-2xl text-sm leading-relaxed whitespace-pre-line ${
+              msg.sender === 'user' 
+                ? 'bg-emerald-600 text-white rounded-tr-none' 
+                : 'bg-white/5 border border-white/10 text-slate-200 rounded-tl-none'
+              }`}>
+              {msg.text}
             </div>
+            <span className="text-[10px] text-slate-500 mt-1 px-1">{msg.timestamp}</span>
           </div>
         ))}
-
-        {/* Loading/Querying state indicator */}
         {isQuerying && (
-          <div className="flex justify-start">
-            <div className="bg-white/5 border border-white/10 p-4 rounded-2xl rounded-bl-none flex items-center gap-2">
-              <Loader2 className="w-4 h-4 text-emerald-400 animate-spin" />
-              <span className="text-[10px] text-slate-400 font-mono animate-pulse">Coach is formulating healthy options...</span>
-            </div>
+          <div className="flex items-center gap-2 text-slate-400 text-sm italic pl-2">
+            <Loader2 className="w-4 h-4 animate-spin text-emerald-400" />
+            Coach is drafting response...
           </div>
         )}
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Recommended Question tags */}
-      {messages.length < 3 && !isQuerying && (
-        <div className="px-4 py-3 bg-white/5 border-t border-white/10 flex flex-wrap gap-2">
-          {quickPrompts.map((p, i) => (
-            <button
-              key={i}
-              onClick={() => handleSendMessage(p.text)}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10 hover:border-emerald-500/30 rounded-full text-[10px] font-medium transition cursor-pointer"
-            >
-              <HelpCircle className="w-3 h-3 text-emerald-400" />
-              {p.label}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* Input Form Box */}
-      <div className="p-3 bg-white/5 border-t border-white/10">
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            handleSendMessage();
-          }}
-          className="flex gap-2"
+      <div className="flex gap-2 bg-white/5 border border-white/10 p-2 rounded-xl">
+        <input
+          type="text"
+          value={inputText}
+          onChange={(e) => setInputText(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
+          placeholder="Ask about healthy BMR, home exercises..."
+          className="flex-1 bg-transparent text-sm text-white placeholder-slate-500 outline-none px-2"
+          disabled={isQuerying}
+        />
+        <button
+          onClick={handleSendMessage}
+          disabled={isQuerying}
+          className="bg-emerald-500 hover:bg-emerald-600 text-white p-2 rounded-lg transition disabled:opacity-50"
         >
-          <input
-            type="text"
-            value={inputText}
-            aria-label="Ask your AI Fitness Coach"
-            onChange={(e) => setInputText(e.target.value)}
-            disabled={isQuerying}
-            placeholder="Ask about healthy BMR, home exercises, meal protein ratios..."
-            className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-xs text-white focus:outline-none focus:border-emerald-500/30 focus:ring-1 focus:ring-emerald-500/10 focus:bg-white/10 transition"
-          />
-          <button
-            type="submit"
-            disabled={!inputText.trim() || isQuerying}
-            style={{ opacity: !inputText.trim() ? 0.6 : 1 }}
-            className="p-3.5 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 rounded-xl shadow transition cursor-pointer flex items-center justify-center shrink-0 font-bold"
-            aria-label="Send message button"
-          >
-            <Send className="w-4 h-4" />
-          </button>
-        </form>
-        
-        {/* Support disclaimer banner */}
-        <p className="text-[9px] text-slate-400 text-center font-normal leading-normal mt-2 italic flex items-center justify-center gap-1 select-none">
-          <AlertTriangle className="w-3 h-3 text-amber-400" />
-          Coach estimates represent supportive guidelines only and do not replace professional medical evaluations.
-        </p>
+          <Send className="w-4 h-4" />
+        </button>
       </div>
-
     </div>
-  );
+  ); 
 }
