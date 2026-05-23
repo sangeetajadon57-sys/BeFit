@@ -19,20 +19,6 @@ jobs:
           npm install
           npm install @capacitor/core@6 @capacitor/cli@6 @capacitor/android@6
 
-      - name: Force Patch Mobile Image Formats
-        run: |
-          # 1. Inject your secret API Key into the codebase files cleanly
-          find src/ -type f -exec sed -i 's/process.env.VITE_GEMINI_API_KEY/"${{ secrets.VITE_GEMINI_API_KEY }}"/g' {} +
-          find src/ -type f -exec sed -i 's/import.meta.env.VITE_GEMINI_API_KEY/"${{ secrets.VITE_GEMINI_API_KEY }}"/g' {} +
-          find src/ -type f -exec sed -i 's/process.env.GEMINI_API_KEY/"${{ secrets.VITE_GEMINI_API_KEY }}"/g' {} +
-          
-          # 2. Inject a standard utility helper at the top of the food scanner to translate local mobile file streams
-          find src/ -type f -name "FoodScanner.tsx" -exec sed -i '1s/^/async function localFileToGenPart(url) { const res = await fetch(url); const blob = await res.blob(); return new Promise((resolve) => { const reader = new FileReader(); reader.onloadend = () => resolve({ inlineData: { data: reader.result.split(",")[1], mimeType: blob.type } }); reader.readAsDataURL(blob); }); }\n/' {} +
-          
-          # 3. Modify the server arguments array to evaluate the helper string conversion dynamically
-          find src/ -type f -name "FoodScanner.tsx" -exec sed -i 's/generateContent(\[prompt, image\])/generateContent([prompt, await localFileToGenPart(image)])/g' {} +
-          find src/ -type f -name "FoodScanner.tsx" -exec sed -i 's/generateContent(\[prompt, photo\])/generateContent([prompt, await localFileToGenPart(photo)])/g' {} +
-
       - name: Build Web Code
         run: |
           npm run build --if-present
