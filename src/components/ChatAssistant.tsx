@@ -83,12 +83,6 @@ export default function ChatAssistant({ userProfile, currentMetrics }: ChatAssis
       const assistantMsg: Message = {
         id: Math.random().toString(36).substr(2, 9),
         sender: 'assistant',
-        text: aiResponseText,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-      };
-      const assistantMsg: Message = {
-        id: Math.random().toString(36).substr(2, 9),
-        sender: 'assistant',
         text: data.text || "I appreciate you checking in. Let's redirect our wellness focus.",
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       };
