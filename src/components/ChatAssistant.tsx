@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Send, Sparkles, MessageCircle, AlertTriangle, ShieldCheck, HelpCircle, Loader2 } from 'lucide-react';
+import { Send, Sparkles, MessageCircle, AlertTriangle, ShieldCheck, HelpCircle, Loader2, WifiOff } from 'lucide-react';
 import { Message, UserProfile, CalculationResult } from '../types';
+import { getApiUrl } from '../utils/api';
 
 interface ChatAssistantProps {
   userProfile: UserProfile | null;
@@ -24,7 +25,22 @@ export default function ChatAssistant({ userProfile, currentMetrics }: ChatAssis
 
   const [inputText, setInputText] = useState('');
   const [isQuerying, setIsQuerying] = useState(false);
+  const [isOnline, setIsOnline] = useState<boolean>(typeof navigator !== 'undefined' ? navigator.onLine : true);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+
+  // Connection monitoring for mobile signals
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   // Auto scroll to bottom
   const scrollToBottom = () => {
@@ -53,32 +69,35 @@ export default function ChatAssistant({ userProfile, currentMetrics }: ChatAssis
     setMessages((prev) => [...prev, userMsg]);
     setIsQuerying(true);
 
-           try {
-      const chatHistory = [...messages, userMsg].map(m => 
-        `${m.sender === 'user' ? 'User' : 'Model'}: ${m.text}`
-      ).join('\n');
+    // Timeout response if on extremely lagging 3G or low reception
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 20000); // 20 seconds response timeout for mobile
 
-      const systemPrompt = `You are an expert fitness coach and nutritionist. User Profile: ${JSON.stringify(userProfile)}. Current Metrics: ${JSON.stringify(currentMetrics)}. Chat History:\n${chatHistory}\nModel:`;
+    try {
+      const chatHistory = [...messages, userMsg];
 
-      const cleanKey = import.meta.env.VITE_GEMINI_API_KEY;
-             
-      const response = await fetch(`https://googleapis.com{cleanKey}`, {
+      // Resolve the API URL which securely routes to absolute Cloud Run when in local APK mode
+      const targetApiUrl = getApiUrl('/api/chat');
+
+      const response = await fetch(targetApiUrl, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          contents: [{ parts: [{ text: systemPrompt }] }]
-        })
+          messages: chatHistory,
+          userProfile,
+          currentMetrics
+        }),
+        signal: controller.signal
       });
+
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
         throw new Error('Could not establish contact with AI Fitness server.');
       }
 
       const data = await response.json();
-      const aiResponseText = data.candidates[0]?.content?.parts[0]?.text || "I'm having trouble processing that advice right now.";
-
+      
       const assistantMsg: Message = {
         id: Math.random().toString(36).substr(2, 9),
         sender: 'assistant',
@@ -89,11 +108,20 @@ export default function ChatAssistant({ userProfile, currentMetrics }: ChatAssis
       setMessages((prev) => [...prev, assistantMsg]);
 
     } catch (err: any) {
+      clearTimeout(timeoutId);
       console.error(err);
+      
+      let failText = "My apologies, I am having a brief metabolic timeout. Let's try saying that again in a moment.";
+      if (err.name === 'AbortError') {
+        failText = "📡 **Signal Timeout**: The request took too long due to low cellular signal strength. Please move to a higher coverage area or steady Wi-Fi network and tap to retry.";
+      } else if (!navigator.onLine) {
+        failText = "⚡ **Network Offline**: It seems your connection was interrupted while calling your wellness coach. Check your network status and try again.";
+      }
+
       const errorMsg: Message = {
         id: Math.random().toString(36).substr(2, 9),
         sender: 'assistant',
-        text: "My apologies, I am having a brief metabolic timeout. Let's try saying that again in a moment.",
+        text: failText,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       };
       setMessages((prev) => [...prev, errorMsg]);
@@ -101,6 +129,7 @@ export default function ChatAssistant({ userProfile, currentMetrics }: ChatAssis
       setIsQuerying(false);
     }
   };
+
 
   // Preset quick recommendations
   const quickPrompts = [
@@ -131,6 +160,14 @@ export default function ChatAssistant({ userProfile, currentMetrics }: ChatAssis
           Secure Chat
         </div>
       </div>
+
+      {/* Offline Alert Bar */}
+      {!isOnline && (
+        <div className="bg-amber-500/20 border-b border-amber-500/35 px-4 py-2 flex items-center gap-2 text-[10px] text-amber-300 font-mono animate-fade-in">
+          <WifiOff className="w-3.5 h-3.5 text-amber-400 animate-pulse shrink-0" />
+          <span>Offline mode active. Messages will queue until mobile internet connects.</span>
+        </div>
+      )}
 
       {/* Messages Scroll Box */}
       <div className="flex-1 p-4 overflow-y-auto bg-transparent space-y-4 text-xs">
