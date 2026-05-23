@@ -79,7 +79,7 @@ export default function ChatAssistant({ userProfile, currentMetrics }: ChatAssis
 
       const data = await response.json();
       const aiResponseText = data.candidates?.[0]?.content?.parts?.[0]?.text || "I'm having trouble processing that advice right now.";
-
+  
       const assistantMsg: Message = {
         id: Math.random().toString(36).substr(2, 9),
         sender: 'assistant',
