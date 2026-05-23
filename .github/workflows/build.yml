@@ -1,5 +1,5 @@
 name: Build APK
-on: [push]
+on: [push, workflow_dispatch]
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -15,15 +15,17 @@ jobs:
           npm install
           npm install @capacitor/core@6 @capacitor/cli@6 @capacitor/android@6
 
-      - name: Hardcode API Key Everywhere
+      - name: Automatic Photo Configuration Fix
         run: |
-          # This will scan every single file in your src folder and forcefully insert your real key
+          # 1. Hardcode your API key into your code automatically
           find src/ -type f -exec sed -i 's/process.env.VITE_GEMINI_API_KEY/"${{ secrets.VITE_GEMINI_API_KEY }}"/g' {} +
           find src/ -type f -exec sed -i 's/import.meta.env.VITE_GEMINI_API_KEY/"${{ secrets.VITE_GEMINI_API_KEY }}"/g' {} +
           find src/ -type f -exec sed -i 's/process.env.GEMINI_API_KEY/"${{ secrets.VITE_GEMINI_API_KEY }}"/g' {} +
           find src/ -type f -exec sed -i 's/import.meta.env.GEMINI_API_KEY/"${{ secrets.VITE_GEMINI_API_KEY }}"/g' {} +
-          echo "VITE_GEMINI_API_KEY=${{ secrets.VITE_GEMINI_API_KEY }}" > .env
-          echo "GEMINI_API_KEY=${{ secrets.VITE_GEMINI_API_KEY }}" >> .env
+          
+          # 2. Fix the photo path issue so the AI engine can read mobile camera uploads
+          find src/ -type f -name "*.tsx" -o -name "*.ts" -o -name "*.js" | xargs sed -i 's/fetch(image/fetch(image.startsWith("http") ? image : "data:image\/jpeg;base64," + image/g' || true
+          find src/ -type f -name "*.tsx" -o -name "*.ts" -o -name "*.js" | xargs sed -i 's/fetch(photo/fetch(photo.startsWith("http") ? photo : "data:image\/jpeg;base64," + photo/g' || true
 
       - name: Build Web Code
         run: |
@@ -40,12 +42,11 @@ jobs:
           npx cap init "Be Fit AI" "com.befit.app" --web-dir=dist
           npx cap add android
 
-      - name: Open System Network and Camera Access
+      - name: Open Full System Network and Camera Access
         run: |
           sed -i '/<application/i \    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-permission android:name="android.permission.RECORD_AUDIO" />\n    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />\n    <uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />\n    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />' android/app/src/main/AndroidManifest.xml
           sed -i 's/<application/<application android:usesCleartextTraffic="true" android:networkSecurityConfig="@xml\/network_security_config"/g' android/app/src/main/AndroidManifest.xml
           
-          # Create a custom security rule to prevent Android from blocking the Google AI endpoint link
           mkdir -p android/app/src/main/res/xml
           cat <<EOF > android/app/src/main/res/xml/network_security_config.xml
           <?xml version="1.0" encoding="utf-8"?>
