@@ -29,7 +29,9 @@ export default function ChatAssistant({ userProfile, currentMetrics }: ChatAssis
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
   const buildApiKey = (import.meta as any).env?.VITE_GEMINI_API_KEY;
-  const localApiKey = typeof window !== 'undefined' ? localStorage.getItem('user_gemini_api_key') || '' : '';
+  const localApiKey = typeof window !== 'undefined' 
+    ? localStorage.getItem('VITE_GEMINI_API_KEY') || localStorage.getItem('user_gemini_api_key') || '' 
+    : '';
   const hasApiKey = !!((buildApiKey && buildApiKey.trim() !== "" && buildApiKey !== "MY_GEMINI_API_KEY") || localApiKey.trim());
 
   // Auto scroll to bottom
@@ -65,9 +67,10 @@ export default function ChatAssistant({ userProfile, currentMetrics }: ChatAssis
 
     try {
       const chatHistory = [...messages, userMsg];
-      const clientApiKey = (buildApiKey && buildApiKey.trim() !== "" && buildApiKey !== "MY_GEMINI_API_KEY") 
-        ? buildApiKey.trim() 
-        : localApiKey.trim();
+      const dynamicApiKey = typeof window !== 'undefined' 
+        ? localStorage.getItem('VITE_GEMINI_API_KEY') || localStorage.getItem('user_gemini_api_key') || ''
+        : '';
+      const clientApiKey = dynamicApiKey.trim() || ((buildApiKey && buildApiKey.trim() !== "" && buildApiKey !== "MY_GEMINI_API_KEY") ? buildApiKey.trim() : '');
 
       let aiText = '';
 

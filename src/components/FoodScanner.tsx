@@ -52,7 +52,9 @@ export default function FoodScanner({ onAddCalories }: FoodScannerProps) {
   const [isLogged, setIsLogged] = useState(false);
 
   const buildApiKey = (import.meta as any).env?.VITE_GEMINI_API_KEY;
-  const localApiKey = typeof window !== 'undefined' ? localStorage.getItem('user_gemini_api_key') || '' : '';
+  const localApiKey = typeof window !== 'undefined' 
+    ? localStorage.getItem('VITE_GEMINI_API_KEY') || localStorage.getItem('user_gemini_api_key') || '' 
+    : '';
   const hasApiKey = !!((buildApiKey && buildApiKey.trim() !== "" && buildApiKey !== "MY_GEMINI_API_KEY") || localApiKey.trim());
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -244,9 +246,10 @@ export default function FoodScanner({ onAddCalories }: FoodScannerProps) {
     };
 
     try {
-      const clientApiKey = (buildApiKey && buildApiKey.trim() !== "" && buildApiKey !== "MY_GEMINI_API_KEY") 
-        ? buildApiKey.trim() 
-        : localApiKey.trim();
+      const dynamicApiKey = typeof window !== 'undefined' 
+        ? localStorage.getItem('VITE_GEMINI_API_KEY') || localStorage.getItem('user_gemini_api_key') || ''
+        : '';
+      const clientApiKey = dynamicApiKey.trim() || ((buildApiKey && buildApiKey.trim() !== "" && buildApiKey !== "MY_GEMINI_API_KEY") ? buildApiKey.trim() : '');
       
       let cleanBase64 = base64Data;
       let actualMimeType = mimeType || "image/jpeg";

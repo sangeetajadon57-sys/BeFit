@@ -63,8 +63,10 @@ export default function App() {
   });
 
   const [customApiKey, setCustomApiKey] = useState<string>(() => {
-    return localStorage.getItem('user_gemini_api_key') || '';
+    return localStorage.getItem('VITE_GEMINI_API_KEY') || localStorage.getItem('user_gemini_api_key') || '';
   });
+
+  const [saveMessage, setSaveMessage] = useState<string>('');
 
   const [activeTab, setActiveTab] = useState<Tab>(() => {
     return userProfile ? 'dashboard' : 'profile';
@@ -361,9 +363,7 @@ export default function App() {
                         }
                         value={customApiKey}
                         onChange={(e) => {
-                          const val = e.target.value;
-                          setCustomApiKey(val);
-                          localStorage.setItem('user_gemini_api_key', val.trim());
+                          setCustomApiKey(e.target.value);
                         }}
                         className="flex-1 bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-xs text-white placeholder-slate-500 font-mono tracking-wider focus:outline-none focus:border-emerald-500/40"
                       />
@@ -372,6 +372,7 @@ export default function App() {
                           onClick={() => {
                             setCustomApiKey('');
                             localStorage.removeItem('user_gemini_api_key');
+                            localStorage.removeItem('VITE_GEMINI_API_KEY');
                           }}
                           className="px-4 py-2 bg-white/5 border border-white/10 hover:bg-rose-500/10 text-rose-300 font-semibold text-xs rounded-xl transition cursor-pointer"
                         >
@@ -379,6 +380,29 @@ export default function App() {
                         </button>
                       )}
                     </div>
+                    
+                    <div className="pt-1">
+                      <button
+                        onClick={() => {
+                          const trimmed = customApiKey.trim();
+                          localStorage.setItem('VITE_GEMINI_API_KEY', trimmed);
+                          localStorage.setItem('user_gemini_api_key', trimmed);
+                          setSaveMessage("Key Saved Successfully! ✅");
+                          setTimeout(() => {
+                            setSaveMessage('');
+                          }, 3000);
+                        }}
+                        className="w-full sm:w-auto px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs rounded-xl transition cursor-pointer shadow-md inline-flex items-center justify-center gap-1.5"
+                      >
+                        Save Key
+                      </button>
+                      {saveMessage && (
+                        <span className="ml-3 text-[10px] text-emerald-400 font-bold animate-fade-in inline-block align-middle">
+                          {saveMessage}
+                        </span>
+                      )}
+                    </div>
+
                     <p className="text-[9px] text-slate-400 leading-normal">
                       Note: You can get a free API Key from first-party Google developers. No data goes through any middle servers.
                     </p>
