@@ -50,6 +50,10 @@ export default function FoodScanner({ onAddCalories }: FoodScannerProps) {
   const [isTuningMode, setIsTuningMode] = useState(false);
   const [isLogged, setIsLogged] = useState(false);
 
+  const buildApiKey = (import.meta as any).env?.VITE_GEMINI_API_KEY;
+  const localApiKey = typeof window !== 'undefined' ? localStorage.getItem('user_gemini_api_key') || '' : '';
+  const hasApiKey = !!((buildApiKey && buildApiKey.trim() !== "" && buildApiKey !== "MY_GEMINI_API_KEY") || localApiKey.trim());
+
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const nativeCamInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -188,7 +192,9 @@ export default function FoodScanner({ onAddCalories }: FoodScannerProps) {
     const timeoutId = setTimeout(() => controller.abort(), 25050);
 
     try {
-      const clientApiKey = (import.meta as any).env?.VITE_GEMINI_API_KEY;
+      const clientApiKey = (buildApiKey && buildApiKey.trim() !== "" && buildApiKey !== "MY_GEMINI_API_KEY") 
+        ? buildApiKey.trim() 
+        : localApiKey.trim();
       
       let cleanBase64 = base64Data;
       let actualMimeType = mimeType || "image/jpeg";
@@ -204,7 +210,7 @@ export default function FoodScanner({ onAddCalories }: FoodScannerProps) {
 
       let data: FoodScanResult;
 
-      if (clientApiKey && clientApiKey.trim() !== "" && clientApiKey !== "MY_GEMINI_API_KEY") {
+      if (clientApiKey && clientApiKey !== "") {
         const promptText = `Analyze this image to detect if it contains listable food items, meals, solid/liquid nutrition, raw ingredients, or restaurant dishes.
 If the image is NOT food or drink (e.g., text, documents, animals, clothes, screenshots of apps, landscape, a car, or faces with no food visible), set isFood: false with an appropriate explanation in rejectedReason. Be strictly helpful but clear.
 
@@ -381,9 +387,22 @@ Formulate instructions in clear, positive, and wellness-focused language.`;
   return (
     <div className="w-full max-w-4xl mx-auto space-y-6 select-none relative z-10">
 
+      {/* Standalone Key Warning */}
+      {!hasApiKey && (
+        <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl px-4 py-3 flex items-start gap-2.5 text-[10px] text-amber-200 animate-fade-in shadow-inner">
+          <AlertTriangle className="w-4 h-4 text-amber-450 shrink-0 mt-0.5" />
+          <div className="space-y-0.5 text-left">
+            <span className="font-bold block">Standalone Gemini Key Missing:</span>
+            <p className="font-light text-[9px] text-slate-350 leading-normal">
+              To use AI nutritional scanning on standalone compiled mobile app configs, make sure to add your Google Gemini API Key in the <strong>Setup</strong> tab.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Mobile Offline Status Flag banner */}
       {!isOnline && (
-        <div id="scanner-offline-widget-status" className="bg-amber-500/10 border border-amber-500/25 p-3 rounded-xl flex items-center justify-between gap-3 text-xs text-amber-300 font-mono animate-pulse">
+        <div id="scanner-offline-widget-status" className="bg-amber-500/10 border border-amber-500/25 p-3 rounded-xl flex items-center justify-between gap-3 text-xs text-amber-300 font-mono animate-pulse font-light">
           <div className="flex items-center gap-2">
             <WifiOff className="w-4 h-4 text-amber-400" />
             <span>Cellular/data signals aren't active. Analysis is restricted to local database lookup searches only.</span>

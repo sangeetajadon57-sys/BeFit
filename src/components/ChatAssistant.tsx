@@ -28,6 +28,10 @@ export default function ChatAssistant({ userProfile, currentMetrics }: ChatAssis
   const [isOnline, setIsOnline] = useState<boolean>(typeof navigator !== 'undefined' ? navigator.onLine : true);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
+  const buildApiKey = (import.meta as any).env?.VITE_GEMINI_API_KEY;
+  const localApiKey = typeof window !== 'undefined' ? localStorage.getItem('user_gemini_api_key') || '' : '';
+  const hasApiKey = !!((buildApiKey && buildApiKey.trim() !== "" && buildApiKey !== "MY_GEMINI_API_KEY") || localApiKey.trim());
+
   // Connection monitoring for mobile signals
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
@@ -75,11 +79,13 @@ export default function ChatAssistant({ userProfile, currentMetrics }: ChatAssis
 
     try {
       const chatHistory = [...messages, userMsg];
-      const clientApiKey = (import.meta as any).env?.VITE_GEMINI_API_KEY;
+      const clientApiKey = (buildApiKey && buildApiKey.trim() !== "" && buildApiKey !== "MY_GEMINI_API_KEY") 
+        ? buildApiKey.trim() 
+        : localApiKey.trim();
 
       let aiText = '';
 
-      if (clientApiKey && clientApiKey.trim() !== "" && clientApiKey !== "MY_GEMINI_API_KEY") {
+      if (clientApiKey && clientApiKey !== "") {
         // Reconstruct user context strings directly on client
         let contextStr = "The user has not calculated metrics yet.";
         if (userProfile) {
@@ -238,6 +244,19 @@ ${contextStr}`;
           Secure Chat
         </div>
       </div>
+
+      {/* Standalone Key Warning */}
+      {!hasApiKey && (
+        <div className="bg-amber-500/10 border-b border-amber-500/20 px-4 py-3 flex items-start gap-2.5 text-[10px] text-amber-200">
+          <AlertTriangle className="w-4 h-4 text-amber-450 shrink-0 mt-0.5" />
+          <div className="space-y-0.5">
+            <span className="font-bold">Standalone Gemini Key Missing:</span>
+            <p className="font-light text-[9px] text-slate-350 leading-normal">
+              To support direct high-speed calculations, please open the <strong>Setup</strong> tab and provide a Gemini API Key.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Offline Alert Bar */}
       {!isOnline && (
