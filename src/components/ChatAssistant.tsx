@@ -151,11 +151,28 @@ ${contextStr}`;
         });
 
         if (!response.ok) {
-          throw new Error('Direct Gemini communication issue.');
+          let errorMsg = 'Direct Gemini communication issue.';
+          try {
+            const errJson = await response.json();
+            if (errJson.error?.message) {
+              errorMsg = `API Error: ${errJson.error.message}`;
+            }
+          } catch (_) {}
+          throw new Error(errorMsg);
         }
 
-        const data = await response.json();
-        aiText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        let rawResponseText = '';
+        try {
+          rawResponseText = await response.text();
+          const data = JSON.parse(rawResponseText);
+          aiText = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+          if (!aiText && data?.text) {
+            aiText = data.text;
+          }
+        } catch (jsonErr) {
+          console.error("Failed to parse direct Gemini JSON response, using fallback text:", jsonErr);
+          aiText = rawResponseText || "My apologies, I received an invalid response format from the Gemini API.";
+        }
 
       } else {
         // Resolve the API URL which securely routes to absolute Cloud Run when in local APK mode
@@ -176,8 +193,15 @@ ${contextStr}`;
           throw new Error('Could not establish contact with AI Fitness server.');
         }
 
-        const data = await response.json();
-        aiText = data.text || '';
+        let rawProxyText = '';
+        try {
+          rawProxyText = await response.text();
+          const data = JSON.parse(rawProxyText);
+          aiText = data.text || data.aiText || '';
+        } catch (jsonErr) {
+          console.error("Failed to parse backend chat response, using raw text:", jsonErr);
+          aiText = rawProxyText || "Empty response received from connection.";
+        }
       }
 
       clearTimeout(timeoutId);
