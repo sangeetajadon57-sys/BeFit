@@ -132,7 +132,7 @@ ${contextStr}`;
           };
         });
 
-        const directUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${clientApiKey}`;
+        const directUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${clientApiKey}`;
         const reqPayload = {
           contents: geminiContents,
           generationConfig: {
