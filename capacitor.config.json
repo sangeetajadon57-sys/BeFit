@@ -1,0 +1,11 @@
+{
+  "appId": "com.befitai.app",
+  "appName": "Be Fit AI",
+  "webDir": "dist",
+  "bundledWebRuntime": false,
+  "plugins": {
+    "CapacitorHttp": {
+      "enabled": true
+    }
+  }
+}

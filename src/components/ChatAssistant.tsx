@@ -26,26 +26,11 @@ export default function ChatAssistant({ userProfile, currentMetrics }: ChatAssis
 
   const [inputText, setInputText] = useState('');
   const [isQuerying, setIsQuerying] = useState(false);
-  const [isOnline, setIsOnline] = useState<boolean>(typeof navigator !== 'undefined' ? navigator.onLine : true);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
   const buildApiKey = (import.meta as any).env?.VITE_GEMINI_API_KEY;
   const localApiKey = typeof window !== 'undefined' ? localStorage.getItem('user_gemini_api_key') || '' : '';
   const hasApiKey = !!((buildApiKey && buildApiKey.trim() !== "" && buildApiKey !== "MY_GEMINI_API_KEY") || localApiKey.trim());
-
-  // Connection monitoring for mobile signals
-  useEffect(() => {
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
-
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-    };
-  }, []);
 
   // Auto scroll to bottom
   const scrollToBottom = () => {
@@ -280,8 +265,8 @@ ${contextStr}`;
       let failText = "My apologies, I am having a brief metabolic timeout. Let's try saying that again in a moment.";
       if (err.name === 'AbortError') {
         failText = "📡 **Signal Timeout**: The request took too long due to low cellular signal strength. Please move to a higher coverage area or steady Wi-Fi network and tap to retry.";
-      } else if (!navigator.onLine) {
-        failText = "⚡ **Network Offline**: It seems your connection was interrupted while calling your wellness coach. Check your network status and try again.";
+      } else {
+        failText = `⚡ **Connection Failed**: It seems your connection was interrupted while calling your wellness coach. Message detail: ${err.message || "Network issue"}. Please check your internet connection and try again.`;
       }
 
       const errorMsg: Message = {
@@ -340,13 +325,7 @@ ${contextStr}`;
         </div>
       )}
 
-      {/* Offline Alert Bar */}
-      {!isOnline && (
-        <div className="bg-amber-500/20 border-b border-amber-500/35 px-4 py-2 flex items-center gap-2 text-[10px] text-amber-300 font-mono animate-fade-in">
-          <WifiOff className="w-3.5 h-3.5 text-amber-400 animate-pulse shrink-0" />
-          <span>Offline mode active. Messages will queue until mobile internet connects.</span>
-        </div>
-      )}
+
 
       {/* Messages Scroll Box */}
       <div className="flex-1 p-4 overflow-y-auto bg-transparent space-y-4 text-xs">

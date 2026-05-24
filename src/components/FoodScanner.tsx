@@ -70,22 +70,6 @@ export default function FoodScanner({ onAddCalories }: FoodScannerProps) {
     }
   };
 
-  const [isOnline, setIsOnline] = useState<boolean>(typeof navigator !== 'undefined' ? navigator.onLine : true);
-
-  // Connection monitoring for mobile signals
-  useEffect(() => {
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
-
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-    };
-  }, []);
-
   // Cycle loading messages to engage user
   useEffect(() => {
     if (scanState === 'loading') {
@@ -518,16 +502,6 @@ Formulate instructions in clear, positive, and wellness-focused language.`;
         </div>
       )}
 
-      {/* Mobile Offline Status Flag banner */}
-      {!isOnline && (
-        <div id="scanner-offline-widget-status" className="bg-amber-500/10 border border-amber-500/25 p-3 rounded-xl flex items-center justify-between gap-3 text-xs text-amber-300 font-mono animate-pulse font-light">
-          <div className="flex items-center gap-2">
-            <WifiOff className="w-4 h-4 text-amber-400" />
-            <span>Cellular/data signals aren't active. Analysis is restricted to local database lookup searches only.</span>
-          </div>
-          <span className="text-[9px] bg-amber-500/20 text-amber-400 font-bold px-1.5 py-0.5 rounded font-mono animate-bounce">OFFLINE</span>
-        </div>
-      )}
       
       {/* Title block */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-white/10 pb-4">
