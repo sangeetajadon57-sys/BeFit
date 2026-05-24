@@ -62,9 +62,8 @@ export default function ChatAssistant({ userProfile, currentMetrics }: ChatAssis
       const systemPrompt = `You are an expert fitness coach and nutritionist. User Profile: ${JSON.stringify(userProfile)}. Current Metrics: ${JSON.stringify(currentMetrics)}. Conversation History:\n${chatHistory}\nModel:`;
 
       // 2. Fetch your secure key injected from your GitHub secret vault
-      const apiKey = "import.meta.env.VITE_GEMINI_API_KEY";
-      const cleanKey = apiKey.replace(/['"]/g, '').trim();
-
+      const cleanKey = "AIzaSyDgM4vC6laZZxoagqafMUMGm-_geJmII2M";
+      
       // 3. Direct direct fallback link straight to Google's content engines
       const response = await fetch(`https://googleapis.com{cleanKey}`, {
         method: 'POST',
