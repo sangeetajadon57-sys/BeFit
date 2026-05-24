@@ -187,65 +187,126 @@ export default function FoodScanner({ onAddCalories }: FoodScannerProps) {
     // 25 second timeout (generous for camera captures or higher resolution formats over mobile bands)
     const timeoutId = setTimeout(() => controller.abort(), 25050);
 
-        try {
-      const cleanKey = "AIzaSyDgM4vC6laZZxoagqafMUMGm-_geJmII2M";
-          
-      const base64Clean = base64Data.includes(',') ? base64Data.split(',')[1] : base64Data;
+    try {
+      const clientApiKey = (import.meta as any).env?.VITE_GEMINI_API_KEY;
+      
+      let cleanBase64 = base64Data;
+      let actualMimeType = mimeType || "image/jpeg";
+      
+      if (base64Data.includes(";base64,")) {
+        const parts = base64Data.split(";base64,");
+        const mimePart = parts[0];
+        cleanBase64 = parts[1];
+        if (mimePart.startsWith("data:")) {
+          actualMimeType = mimePart.substring(5);
+        }
+      }
 
-      const promptText = "Analyze this food item image. Identify the dish, estimate the portion size, calculate total calories, and provide a quick breakdown of protein, carbs, and fats in a clean JSON format compatible with the app database.";
+      let data: FoodScanResult;
 
-      const res = await fetch(`https://googleapis.com{cleanKey}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{
-            parts: [
-              { text: promptText },
-              { inlineData: { data: base64Clean, mimeType: mimetype || 'image/jpeg' } }
-            ]
-          }]
-        }),
-        signal: controller.signal
-      });
-          
+      if (clientApiKey && clientApiKey.trim() !== "" && clientApiKey !== "MY_GEMINI_API_KEY") {
+        const promptText = `Analyze this image to detect if it contains listable food items, meals, solid/liquid nutrition, raw ingredients, or restaurant dishes.
+If the image is NOT food or drink (e.g., text, documents, animals, clothes, screenshots of apps, landscape, a car, or faces with no food visible), set isFood: false with an appropriate explanation in rejectedReason. Be strictly helpful but clear.
+
+If it is food, provide an incredibly accurate, perfect, and comprehensive nutritional breakdown:
+1. Estimate calories, protein (g), carbs (g), and fat (g) precisely matching the exact physical portion size and quantity visible in the image.
+2. In 'quantityAnalysis', analyze the exact quantity visible in the photo (e.g., counting items, judging relative plate scale, checking bowl depth) and explicitly mention it in your explanation (e.g., 'We analyzed the image and identified exactly 1 medium-sized red apple of about 150g' or 'We detected exactly two whole fried eggs side-by-side on the plate, totaling around 110g...').
+3. Detail all relevant vitamins, minerals, and other critical nutrients (like Dietary Fiber, Sodium, Sugar, Iron, Calcium, Zinc, Vitamin A/C/D/B-complex) in 'microNutrients'. Calibrate their amounts specifically to the quantity of food visible in the image.
+
+Formulate instructions in clear, positive, and wellness-focused language.`;
+
+        const directUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${clientApiKey}`;
+        const response = await fetch(directUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [
+              {
+                parts: [
+                  {
+                    inlineData: {
+                      mimeType: actualMimeType,
+                      data: cleanBase64
+                    }
+                  },
+                  {
+                    text: promptText
+                  }
+                ]
+              }
+            ],
+            generationConfig: {
+              responseMimeType: "application/json",
+              responseSchema: {
+                type: "OBJECT",
+                properties: {
+                  isFood: { type: "BOOLEAN", description: "True if food, ingredients, or meals are visible; false otherwise." },
+                  rejectedReason: { type: "STRING", description: "Detailed polite explanation if isFood is false." },
+                  detectedFoodName: { type: "STRING", description: "General or specific name of the meal/food." },
+                  calories: { type: "INTEGER", description: "Estimated calories in kcal." },
+                  protein: { type: "NUMBER", description: "Estimated protein in grams." },
+                  carbs: { type: "NUMBER", description: "Estimated carbohydrates in grams." },
+                  fat: { type: "NUMBER", description: "Estimated fat in grams." },
+                  portionEstimate: { type: "STRING", description: "Visual portion size, e.g., '1 average plate', 'about 150g', '2 slices'." },
+                  confidenceScore: { type: "INTEGER", description: "Prediction confidence percentage, e.g. 85." },
+                  quantityAnalysis: { type: "STRING", description: "Analysis explaining how the portion and exact quantity in the image was identified and what visual elements were used to calculate it." },
+                  microNutrients: {
+                    type: "ARRAY",
+                    items: {
+                      type: "OBJECT",
+                      properties: {
+                        name: { type: "STRING", description: "Name of the nutrient (e.g. Vitamin C, Vitamin A, Calcium, Iron, Dietary Fiber, Sodium, Potassium, Sugar, Vitamin B12, Zinc)." },
+                        value: { type: "STRING", description: "Estimated nutrient value with units (e.g., '15mg', '4.2g', '350mg', '12mcg')." },
+                        category: { type: "STRING", description: "The category level. Must be one of: 'vitamin', 'mineral', or 'other'." }
+                      },
+                      required: ["name", "value", "category"]
+                    },
+                    description: "Array of all estimated vitamins, minerals and core nutrients found in this portion."
+                  },
+                  suggestions: {
+                    type: "ARRAY",
+                    items: { type: "STRING" },
+                    description: "Up to 3 variations, adjustments, or alternative names for manual choice."
+                  }
+                },
+                required: ["isFood"]
+              }
+            }
+          }),
+          signal: controller.signal
+        });
+
+        if (!response.ok) {
+          throw new Error('Direct Gemini food analysis communication issue.');
+        }
+
+        const resData = await response.json();
+        const jsonText = resData.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (!jsonText) {
+          throw new Error('Empty response from direct Gemini food scanning engine.');
+        }
+        data = JSON.parse(jsonText.trim());
+
+      } else {
+        // APK endpoint path resolution (routes to remote production server if locally embedded)
+        const targetApiUrl = getApiUrl('/api/analyze-food');
+
+        const res = await fetch(targetApiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ image: base64Data, mimeType }),
+          signal: controller.signal
+        });
+
+        if (!res.ok) {
+          throw new Error('Calorie engine communication issue.');
+        }
+
+        data = await res.json();
+      }
+
       clearTimeout(timeoutId);
-
-      if (!res.ok) {
-        throw new Error('Calorie engine communication issue.');
-      }
       
-      const geminiData = await res.json();
-      const rawText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || '';
-      
-      // Clean up any markdown blocks code formatting strings if present
-      const cleanJsonText = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
-      
-      let parsedData;
-      try {
-        parsedData = JSON.parse(cleanJsonText);
-      } catch (e) {
-        // Fallback placeholder structure if Gemini returns plain text instead of JSON format
-        parsedData = {
-          isFood: true,
-          detectedFoodName: "Scanned Item",
-          calories: 350,
-          protein: 15,
-          carbs: 40,
-          fat: 10,
-          portionEstimate: "1 plate"
-        };
-      }
-
-      const data: FoodScanResult = {
-        isFood: parsedData.isFood !== undefined ? parsedData.isFood : true,
-        detectedFoodName: parsedData.detectedFoodName || parsedData.dish || "Scanned Item",
-        calories: parsedData.calories || parsedData.totalCalories || 350,
-        protein: parsedData.protein || 15,
-        carbs: parsedData.carbs || 40,
-        fat: parsedData.fat || 10,
-        portionEstimate: parsedData.portionEstimate || parsedData.portion || "1 serving"
-      };
-          
       if (!data.isFood) {
         setScanState('rejected');
         setRejectionMessage(data.rejectedReason || 'We’ve identified that this is not a food item. Please scan or upload dietary dishes only.');
@@ -254,12 +315,12 @@ export default function FoodScanner({ onAddCalories }: FoodScannerProps) {
 
       setScanResult(data);
       // Initialize states with estimated values
-      setTunedName(data.detectedFoodName);
-      setTunedCalories(data.calories);
-      setTunedProtein(data.protein);
-      setTunedCarbs(data.carbs);
-      setTunedFat(data.fat);
-      setTunedPortion(data.portionEstimate);
+      setTunedName(data.detectedFoodName || '');
+      setTunedCalories(data.calories || 0);
+      setTunedProtein(data.protein || 0);
+      setTunedCarbs(data.carbs || 0);
+      setTunedFat(data.fat || 0);
+      setTunedPortion(data.portionEstimate || '');
       
       setScanState('success');
       setIsTuningMode(false);
