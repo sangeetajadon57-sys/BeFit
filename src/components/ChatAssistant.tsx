@@ -118,17 +118,23 @@ ${contextStr}`;
 
         // Map messages to Gemini REST schema, starting from first user message
         const firstUserIdx = chatHistory.findIndex(msg => msg.sender === 'user');
-        const geminiContents = chatHistory.slice(firstUserIdx >= 0 ? firstUserIdx : 0).map(msg => ({
-          role: msg.sender === 'user' ? 'user' : 'model',
-          parts: [{ text: msg.text }]
-        }));
+        let contextPrepended = false;
+        const geminiContents = chatHistory.slice(firstUserIdx >= 0 ? firstUserIdx : 0).map(msg => {
+          let text = msg.text;
+          // Prepend system guidelines and user context to the first user message in the payload
+          if (!contextPrepended && msg.sender === 'user') {
+            text = `[SYSTEM INSTRUCTIONS & USER GUIDELINES]\n${systemInstructionText}\n\n[USER INQUIRY]\n${msg.text}`;
+            contextPrepended = true;
+          }
+          return {
+            role: msg.sender === 'user' ? 'user' : 'model',
+            parts: [{ text }]
+          };
+        });
 
         const directUrl = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${clientApiKey}`;
         const reqPayload = {
           contents: geminiContents,
-          system_instruction: {
-            parts: [{ text: systemInstructionText }]
-          },
           generationConfig: {
             temperature: 0.7
           }
