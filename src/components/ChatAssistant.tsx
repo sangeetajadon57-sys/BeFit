@@ -123,7 +123,7 @@ ${contextStr}`;
           parts: [{ text: msg.text }]
         }));
 
-        const directUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${clientApiKey}`;
+        const directUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${clientApiKey}`;
         const reqPayload = {
           contents: geminiContents,
           systemInstruction: {
