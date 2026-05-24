@@ -188,9 +188,8 @@ export default function FoodScanner({ onAddCalories }: FoodScannerProps) {
     const timeoutId = setTimeout(() => controller.abort(), 25050);
 
         try {
-      const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-      const cleanKey = apiKey ? apiKey.replace(/['"]/g, '').trim() : '';
-
+      const cleanKey = "AIzaSyDgM4vC6laZZxoagqafMUMGm-_geJmII2M";
+          
       const base64Clean = base64Data.includes(',') ? base64Data.split(',')[1] : base64Data;
 
       const promptText = "Analyze this food item image. Identify the dish, estimate the portion size, calculate total calories, and provide a quick breakdown of protein, carbs, and fats in a clean JSON format compatible with the app database.";
