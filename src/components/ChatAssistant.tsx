@@ -126,7 +126,7 @@ ${contextStr}`;
         const directUrl = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${clientApiKey}`;
         const reqPayload = {
           contents: geminiContents,
-          systemInstruction: {
+          system_instruction: {
             parts: [{ text: systemInstructionText }]
           },
           generationConfig: {
