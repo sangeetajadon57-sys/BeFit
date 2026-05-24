@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Send, Sparkles, MessageCircle, AlertTriangle, ShieldCheck, HelpCircle, Loader2, WifiOff } from 'lucide-react';
 import { Message, UserProfile, CalculationResult } from '../types';
 import { getApiUrl } from '../utils/api';
+import { Capacitor, CapacitorHttp } from '@capacitor/core';
 
 interface ChatAssistantProps {
   userProfile: UserProfile | null;
@@ -135,72 +136,129 @@ ${contextStr}`;
         }));
 
         const directUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${clientApiKey}`;
-        const response = await fetch(directUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: geminiContents,
-            systemInstruction: {
-              parts: [{ text: systemInstructionText }]
-            },
-            generationConfig: {
-              temperature: 0.7
-            }
-          }),
-          signal: controller.signal
-        });
+        const reqPayload = {
+          contents: geminiContents,
+          systemInstruction: {
+            parts: [{ text: systemInstructionText }]
+          },
+          generationConfig: {
+            temperature: 0.7
+          }
+        };
 
-        if (!response.ok) {
-          let errorMsg = 'Direct Gemini communication issue.';
-          try {
-            const errJson = await response.json();
-            if (errJson.error?.message) {
-              errorMsg = `API Error: ${errJson.error.message}`;
-            }
-          } catch (_) {}
-          throw new Error(errorMsg);
-        }
+        if (Capacitor.isNativePlatform()) {
+          const capResponse = await CapacitorHttp.post({
+            url: directUrl,
+            headers: { 'Content-Type': 'application/json' },
+            data: reqPayload
+          });
 
-        let rawResponseText = '';
-        try {
-          rawResponseText = await response.text();
-          const data = JSON.parse(rawResponseText);
+          if (capResponse.status !== 200) {
+            let errorMsg = 'Direct Gemini communication issue.';
+            if (capResponse.data && typeof capResponse.data === 'object' && capResponse.data.error?.message) {
+              errorMsg = `API Error: ${capResponse.data.error.message}`;
+            } else if (capResponse.data && typeof capResponse.data === 'string') {
+              try {
+                const parsedJson = JSON.parse(capResponse.data);
+                if (parsedJson?.error?.message) {
+                  errorMsg = `API Error: ${parsedJson.error.message}`;
+                }
+              } catch (_) {}
+            }
+            throw new Error(errorMsg);
+          }
+
+          let data = capResponse.data;
+          if (typeof data === 'string') {
+            try {
+              data = JSON.parse(data);
+            } catch (_) {}
+          }
           aiText = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
           if (!aiText && data?.text) {
             aiText = data.text;
           }
-        } catch (jsonErr) {
-          console.error("Failed to parse direct Gemini JSON response, using fallback text:", jsonErr);
-          aiText = rawResponseText || "My apologies, I received an invalid response format from the Gemini API.";
+        } else {
+          const response = await fetch(directUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(reqPayload),
+            signal: controller.signal
+          });
+
+          if (!response.ok) {
+            let errorMsg = 'Direct Gemini communication issue.';
+            try {
+              const errJson = await response.json();
+              if (errJson.error?.message) {
+                errorMsg = `API Error: ${errJson.error.message}`;
+              }
+            } catch (_) {}
+            throw new Error(errorMsg);
+          }
+
+          let rawResponseText = '';
+          try {
+            rawResponseText = await response.text();
+            const data = JSON.parse(rawResponseText);
+            aiText = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+            if (!aiText && data?.text) {
+              aiText = data.text;
+            }
+          } catch (jsonErr) {
+            console.error("Failed to parse direct Gemini JSON response, using fallback text:", jsonErr);
+            aiText = rawResponseText || "My apologies, I received an invalid response format from the Gemini API.";
+          }
         }
 
       } else {
         // Resolve the API URL which securely routes to absolute Cloud Run when in local APK mode
         const targetApiUrl = getApiUrl('/api/chat');
+        const reqPayload = {
+          messages: chatHistory,
+          userProfile,
+          currentMetrics
+        };
 
-        const response = await fetch(targetApiUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            messages: chatHistory,
-            userProfile,
-            currentMetrics
-          }),
-          signal: controller.signal
-        });
+        if (Capacitor.isNativePlatform()) {
+          const capResponse = await CapacitorHttp.post({
+            url: targetApiUrl,
+            headers: { 'Content-Type': 'application/json' },
+            data: reqPayload
+          });
 
-        if (!response.ok) {
-          throw new Error('Could not establish contact with AI Fitness server.');
-        }
+          if (capResponse.status !== 200) {
+            throw new Error('Could not establish contact with AI Fitness server.');
+          }
 
-        let rawProxyText = '';
-        try {
-          rawProxyText = await response.text();
-          const data = JSON.parse(rawProxyText);
-          aiText = data.text || data.aiText || '';
-        } catch (jsonErr) {
-          console.error("Failed to parse backend chat response, using raw text:", jsonErr);
-          aiText = rawProxyText || "Empty response received from connection.";
+          let data = capResponse.data;
+          if (typeof data === 'string') {
+            try {
+              data = JSON.parse(data);
+            } catch (_) {}
+          }
+          aiText = data?.text || data?.aiText || '';
+        } else {
+          const response = await fetch(targetApiUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(reqPayload),
+            signal: controller.signal
+          });
+
+          if (!response.ok) {
+            throw new Error('Could not establish contact with AI Fitness server.');
+          }
+
+          let rawProxyText = '';
+          try {
+            rawProxyText = await response.text();
+            const data = JSON.parse(rawProxyText);
+            aiText = data.text || data.aiText || '';
+          } catch (jsonErr) {
+            console.error("Failed to parse backend chat response, using raw text:", jsonErr);
+            aiText = rawProxyText || "Empty response received from connection.";
+          }
         }
       }
 

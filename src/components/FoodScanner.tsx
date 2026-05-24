@@ -20,6 +20,7 @@ import {
 import { FoodScanResult } from '../types';
 import { GLOBAL_FOOD_DATABASE, searchLocalFood, FoodItem } from '../utils/foodDatabase';
 import { getApiUrl } from '../utils/api';
+import { Capacitor, CapacitorHttp } from '@capacitor/core';
 
 interface FoodScannerProps {
   onAddCalories: (data: { name: string; calories: number; protein: number; carbs: number; fat: number; portion: string }) => void;
@@ -289,94 +290,143 @@ If it is food, provide an incredibly accurate, perfect, and comprehensive nutrit
 Formulate instructions in clear, positive, and wellness-focused language.`;
 
         const directUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${clientApiKey}`;
-        const response = await fetch(directUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [
-              {
-                parts: [
-                  {
-                    inlineData: {
-                      mimeType: actualMimeType,
-                      data: cleanBase64
-                    }
-                  },
-                  {
-                    text: promptText
-                  }
-                ]
-              }
-            ],
-            generationConfig: {
-              responseMimeType: "application/json",
-              responseSchema: {
-                type: "OBJECT",
-                properties: {
-                  isFood: { type: "BOOLEAN", description: "True if food, ingredients, or meals are visible; false otherwise." },
-                  rejectedReason: { type: "STRING", description: "Detailed polite explanation if isFood is false." },
-                  detectedFoodName: { type: "STRING", description: "General or specific name of the meal/food." },
-                  calories: { type: "INTEGER", description: "Estimated calories in kcal." },
-                  protein: { type: "NUMBER", description: "Estimated protein in grams." },
-                  carbs: { type: "NUMBER", description: "Estimated carbohydrates in grams." },
-                  fat: { type: "NUMBER", description: "Estimated fat in grams." },
-                  portionEstimate: { type: "STRING", description: "Visual portion size, e.g., '1 average plate', 'about 150g', '2 slices'." },
-                  confidenceScore: { type: "INTEGER", description: "Prediction confidence percentage, e.g. 85." },
-                  quantityAnalysis: { type: "STRING", description: "Analysis explaining how the portion and exact quantity in the image was identified and what visual elements were used to calculate it." },
-                  microNutrients: {
-                    type: "ARRAY",
-                    items: {
-                      type: "OBJECT",
-                      properties: {
-                        name: { type: "STRING", description: "Name of the nutrient (e.g. Vitamin C, Vitamin A, Calcium, Iron, Dietary Fiber, Sodium, Potassium, Sugar, Vitamin B12, Zinc)." },
-                        value: { type: "STRING", description: "Estimated nutrient value with units (e.g., '15mg', '4.2g', '350mg', '12mcg')." },
-                        category: { type: "STRING", description: "The category level. Must be one of: 'vitamin', 'mineral', or 'other'." }
-                      },
-                      required: ["name", "value", "category"]
-                    },
-                    description: "Array of all estimated vitamins, minerals and core nutrients found in this portion."
-                  },
-                  suggestions: {
-                    type: "ARRAY",
-                    items: { type: "STRING" },
-                    description: "Up to 3 variations, adjustments, or alternative names for manual choice."
+        const reqPayload = {
+          contents: [
+            {
+              parts: [
+                {
+                  inlineData: {
+                    mimeType: actualMimeType,
+                    data: cleanBase64
                   }
                 },
-                required: ["isFood"]
-              }
+                {
+                  text: promptText
+                }
+              ]
             }
-          }),
-          signal: controller.signal
-        });
+          ],
+          generationConfig: {
+            responseMimeType: "application/json",
+            responseSchema: {
+              type: "OBJECT",
+              properties: {
+                isFood: { type: "BOOLEAN", description: "True if food, ingredients, or meals are visible; false otherwise." },
+                rejectedReason: { type: "STRING", description: "Detailed polite explanation if isFood is false." },
+                detectedFoodName: { type: "STRING", description: "General or specific name of the meal/food." },
+                calories: { type: "INTEGER", description: "Estimated calories in kcal." },
+                protein: { type: "NUMBER", description: "Estimated protein in grams." },
+                carbs: { type: "NUMBER", description: "Estimated carbohydrates in grams." },
+                fat: { type: "NUMBER", description: "Estimated fat in grams." },
+                portionEstimate: { type: "STRING", description: "Visual portion size, e.g., '1 average plate', 'about 150g', '2 slices'." },
+                confidenceScore: { type: "INTEGER", description: "Prediction confidence percentage, e.g. 85." },
+                quantityAnalysis: { type: "STRING", description: "Analysis explaining how the portion and exact quantity in the image was identified and what visual elements were used to calculate it." },
+                microNutrients: {
+                  type: "ARRAY",
+                  items: {
+                    type: "OBJECT",
+                    properties: {
+                      name: { type: "STRING", description: "Name of the nutrient (e.g. Vitamin C, Vitamin A, Calcium, Iron, Dietary Fiber, Sodium, Potassium, Sugar, Vitamin B12, Zinc)." },
+                      value: { type: "STRING", description: "Estimated nutrient value with units (e.g., '15mg', '4.2g', '350mg', '12mcg')." },
+                      category: { type: "STRING", description: "The category level. Must be one of: 'vitamin', 'mineral', or 'other'." }
+                    },
+                    required: ["name", "value", "category"]
+                  },
+                  description: "Array of all estimated vitamins, minerals and core nutrients found in this portion."
+                },
+                suggestions: {
+                  type: "ARRAY",
+                  items: { type: "STRING" },
+                  description: "Up to 3 variations, adjustments, or alternative names for manual choice."
+                }
+              },
+              required: ["isFood"]
+            }
+          }
+        };
 
-        if (!response.ok) {
-          throw new Error('Direct Gemini food analysis communication issue.');
-        }
+        if (Capacitor.isNativePlatform()) {
+          const capResponse = await CapacitorHttp.post({
+            url: directUrl,
+            headers: { 'Content-Type': 'application/json' },
+            data: reqPayload
+          });
 
-        const resData = await response.json();
-        const jsonText = resData.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (!jsonText) {
-          throw new Error('Empty response from direct Gemini food scanning engine.');
+          if (capResponse.status !== 200) {
+            throw new Error('Direct Gemini food analysis communication issue.');
+          }
+
+          let jsonText = '';
+          const resBody = capResponse.data;
+          if (resBody && typeof resBody === 'object') {
+            jsonText = resBody.candidates?.[0]?.content?.parts?.[0]?.text || '';
+          } else if (resBody && typeof resBody === 'string') {
+            try {
+              const resJson = JSON.parse(resBody);
+              jsonText = resJson.candidates?.[0]?.content?.parts?.[0]?.text || '';
+            } catch (_) {
+              jsonText = resBody;
+            }
+          }
+
+          if (!jsonText) {
+            throw new Error('Empty response from direct Gemini food scanning engine.');
+          }
+
+          data = cleanAndParseFoodJson(jsonText);
+        } else {
+          const response = await fetch(directUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(reqPayload),
+            signal: controller.signal
+          });
+
+          if (!response.ok) {
+            throw new Error('Direct Gemini food analysis communication issue.');
+          }
+
+          const resData = await response.json();
+          const jsonText = resData.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (!jsonText) {
+            throw new Error('Empty response from direct Gemini food scanning engine.');
+          }
+          data = cleanAndParseFoodJson(jsonText);
         }
-        data = cleanAndParseFoodJson(jsonText);
 
       } else {
         // APK endpoint path resolution (routes to remote production server if locally embedded)
         const targetApiUrl = getApiUrl('/api/analyze-food');
+        const reqPayload = { image: base64Data, mimeType };
 
-        const res = await fetch(targetApiUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ image: base64Data, mimeType }),
-          signal: controller.signal
-        });
+        if (Capacitor.isNativePlatform()) {
+          const capResponse = await CapacitorHttp.post({
+            url: targetApiUrl,
+            headers: { 'Content-Type': 'application/json' },
+            data: reqPayload
+          });
 
-        if (!res.ok) {
-          throw new Error('Calorie engine communication issue.');
+          if (capResponse.status !== 200) {
+            throw new Error('Calorie engine communication issue.');
+          }
+
+          const responseData = typeof capResponse.data === 'string' ? capResponse.data : JSON.stringify(capResponse.data);
+          data = cleanAndParseFoodJson(responseData);
+        } else {
+          const res = await fetch(targetApiUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(reqPayload),
+            signal: controller.signal
+          });
+
+          if (!res.ok) {
+            throw new Error('Calorie engine communication issue.');
+          }
+
+          const rawResText = await res.text();
+          data = cleanAndParseFoodJson(rawResText);
         }
-
-        const rawResText = await res.text();
-        data = cleanAndParseFoodJson(rawResText);
       }
 
       clearTimeout(timeoutId);
