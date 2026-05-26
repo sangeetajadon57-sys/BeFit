@@ -20,6 +20,8 @@ import {
 } from 'lucide-react';
 import WellnessChart from './WellnessChart';
 import WellnessCalendarHeatmap from './WellnessCalendarHeatmap';
+import { Capacitor } from '@capacitor/core';
+import { LocalNotifications } from '@capacitor/local-notifications';
 
 interface WellnessData {
   hydration: number; // Glasses of water
@@ -229,6 +231,222 @@ export default function DailyWellnessChecklist() {
     localStorage.setItem('wellness_hydration_reminders_end_time', remindersEndTime);
   }, [remindersEnabled, reminderInterval, remindersStartTime, remindersEndTime, isInitialized]);
 
+  // Sync scheduled background alarms (both PWA Triggers and Capacitor Native Tasks)
+  const syncBackgroundAlarms = async () => {
+    if (!isInitialized) return;
+
+    // 1. Native Mobile Platform (Capacitor) Background Alarms with lockscreen vibration support
+    if (Capacitor.isNativePlatform()) {
+      try {
+        const hasPermission = await LocalNotifications.checkPermissions();
+        if (hasPermission.display !== 'granted') {
+          await LocalNotifications.requestPermissions();
+        }
+
+        // Cancel previous native schedule to prevent overlaps
+        const pending = await LocalNotifications.getPending();
+        if (pending.notifications && pending.notifications.length > 0) {
+          await LocalNotifications.cancel({ notifications: pending.notifications });
+        }
+
+        if (!remindersEnabled || data.hydration >= WATER_GOAL) {
+          console.log('[DEBUG-Capacitor] Native local reminders cleared/disabled.');
+          return;
+        }
+
+        // Setup vibrating notification channel (essential for Android lockscreen vibration priority)
+        await LocalNotifications.createChannel({
+          id: 'hydration-vibrate-alarms',
+          name: 'Vibrating Hydration Reminders',
+          description: 'High-importance vibrating alerts to drink water even with phone locked',
+          importance: 5, // Top priority to ensure immediate popups & vibration on lockscreen
+          visibility: 1, // Public visibility on lockscreen
+          vibration: true,
+          sound: 'default'
+        });
+
+        // Compute interval in minutes
+        let intervalMin = 60;
+        if (reminderInterval === 'auto') {
+          const startParts = remindersStartTime.split(':').map(Number);
+          const endParts = remindersEndTime.split(':').map(Number);
+          const startMin = startParts[0] * 60 + startParts[1];
+          const endMin = endParts[0] * 60 + endParts[1];
+          const wakeMin = Math.max(180, endMin - startMin); 
+          intervalMin = Math.max(15, Math.round(wakeMin / WATER_GOAL));
+        } else {
+          intervalMin = Number(reminderInterval);
+        }
+
+        const now = new Date();
+        const [startH, startM] = remindersStartTime.split(':').map(Number);
+        
+        const activeTimes: Date[] = [];
+        const maxNativeNotifications = 8;
+        let nextSchTime = new Date(now);
+
+        const lastSentStr = localStorage.getItem('wellness_last_hydration_reminder_stamp');
+        if (lastSentStr) {
+          const lastSentDate = new Date(lastSentStr);
+          nextSchTime = new Date(lastSentDate.getTime() + intervalMin * 60 * 1000);
+        } else {
+          nextSchTime = new Date(now.getTime() + intervalMin * 60 * 1000);
+        }
+
+        if (nextSchTime.getTime() <= now.getTime()) {
+          nextSchTime = new Date(now.getTime() + intervalMin * 60 * 1000);
+        }
+
+        for (let i = 0; i < maxNativeNotifications; i++) {
+          const currentSchTimeStr = nextSchTime.toTimeString().slice(0, 5);
+          
+          if (currentSchTimeStr > remindersEndTime) {
+            nextSchTime.setDate(nextSchTime.getDate() + 1);
+            nextSchTime.setHours(startH, startM, 0, 0);
+          } else if (currentSchTimeStr < remindersStartTime) {
+            nextSchTime.setHours(startH, startM, 0, 0);
+          }
+
+          activeTimes.push(new Date(nextSchTime));
+          nextSchTime = new Date(nextSchTime.getTime() + intervalMin * 60 * 1000);
+        }
+
+        const nativeNotificationsToSchedule = activeTimes.map((runTime, idx) => {
+          return {
+            title: `💧 Hydration Tracker Alarm`,
+            body: `Drink Water! (Currently ${data.hydration}/${WATER_GOAL} glasses logged today). Stay fueled.`,
+            id: 2000 + idx,
+            schedule: { at: runTime },
+            channelId: 'hydration-vibrate-alarms',
+            smallIcon: 'ic_stat_name',
+            iconColor: '#2563eb',
+            attachments: [],
+            extra: null
+          };
+        });
+
+        await LocalNotifications.schedule({
+          notifications: nativeNotificationsToSchedule
+        });
+        console.log('[DEBUG-Capacitor] Scheduled native local notifications:', nativeNotificationsToSchedule);
+      } catch (err) {
+        console.error('[Capacitor] Native local notifications scheduling failed:', err);
+      }
+    }
+
+    // 2. Web/PWA-based Alarms using Service Worker registration with custom Vibration patterns
+    if ('serviceWorker' in navigator && 'Notification' in window) {
+      try {
+        const reg = await navigator.serviceWorker.ready;
+        
+        // Clear previous notifications of this type
+        if ('getNotifications' in reg) {
+          const activeNotifications = await reg.getNotifications();
+          activeNotifications.forEach((notification: any) => {
+            if (notification.tag && (notification.tag.startsWith('wellness-hydrate-') || notification.tag === 'wellness-hydrate')) {
+              notification.close();
+            }
+          });
+        }
+
+        if (!remindersEnabled || data.hydration >= WATER_GOAL || Notification.permission !== 'granted') {
+          console.log('[DEBUG-PWA] Web background alarms not scheduled/cleared.');
+          return;
+        }
+
+        // Compute interval in minutes
+        let intervalMin = 60;
+        if (reminderInterval === 'auto') {
+          const startParts = remindersStartTime.split(':').map(Number);
+          const endParts = remindersEndTime.split(':').map(Number);
+          const startMin = startParts[0] * 60 + startParts[1];
+          const endMin = endParts[0] * 60 + endParts[1];
+          const wakeMin = Math.max(180, endMin - startMin); 
+          intervalMin = Math.max(15, Math.round(wakeMin / WATER_GOAL));
+        } else {
+          intervalMin = Number(reminderInterval);
+        }
+
+        const now = new Date();
+        const [startH, startM] = remindersStartTime.split(':').map(Number);
+        
+        const activeTimes: Date[] = [];
+        const maxWebNotifications = 8;
+        let nextSchTime = new Date(now);
+
+        const lastSentStr = localStorage.getItem('wellness_last_hydration_reminder_stamp');
+        if (lastSentStr) {
+          const lastSentDate = new Date(lastSentStr);
+          nextSchTime = new Date(lastSentDate.getTime() + intervalMin * 60 * 1000);
+        } else {
+          nextSchTime = new Date(now.getTime() + intervalMin * 60 * 1000);
+        }
+
+        if (nextSchTime.getTime() <= now.getTime()) {
+          nextSchTime = new Date(now.getTime() + intervalMin * 60 * 1000);
+        }
+
+        for (let i = 0; i < maxWebNotifications; i++) {
+          const currentSchTimeStr = nextSchTime.toTimeString().slice(0, 5);
+          
+          if (currentSchTimeStr > remindersEndTime) {
+            nextSchTime.setDate(nextSchTime.getDate() + 1);
+            nextSchTime.setHours(startH, startM, 0, 0);
+          } else if (currentSchTimeStr < remindersStartTime) {
+            nextSchTime.setHours(startH, startM, 0, 0);
+          }
+
+          activeTimes.push(new Date(nextSchTime));
+          nextSchTime = new Date(nextSchTime.getTime() + intervalMin * 60 * 1000);
+        }
+
+        const isTriggerSupported = 'showTrigger' in Notification.prototype || (window as any).TimestampTrigger;
+
+        for (let i = 0; i < activeTimes.length; i++) {
+          const runTime = activeTimes[i];
+          const title = "💧 Hydration Alarm Reminder";
+          const desc = `Time to hydrate! Standard Target Check: ${data.hydration}/${WATER_GOAL} glasses logged today. Click or tap to quickly record 1 glass.`;
+
+          const notificationOptions: any = {
+            body: desc,
+            icon: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%232563eb"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg>',
+            badge: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%232563eb"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg>',
+            tag: `wellness-hydrate-${i}`,
+            renotify: true,
+            // Long, robust vibration cadence specifically designed to wake device hardware and rattle lockscreen/pockets distinctly!
+            // Cadence: 800ms vibration, 200ms rest, repeated 4 times.
+            vibrate: [800, 200, 800, 200, 800, 200, 800],
+            actions: [
+              { action: 'log-water', title: '💧 Drink 1 Glass' },
+              { action: 'close', title: 'Dismiss' }
+            ],
+            requireInteraction: true
+          };
+
+          if (isTriggerSupported) {
+            notificationOptions.showTrigger = new (window as any).TimestampTrigger(runTime.getTime());
+            await reg.showNotification(title, notificationOptions);
+          } else {
+            // Standard fallback when the experimental Notification Triggers API is missing in the browser environment.
+            // When foregrounded, our React interval will wake up and display these immediately as backup.
+            if (i === 0 && runTime.getTime() - now.getTime() < 60000) {
+              await reg.showNotification(title, notificationOptions);
+            }
+          }
+        }
+        console.log('[DEBUG-PWA] Scheduled web local trigger notifications:', activeTimes);
+      } catch (err) {
+        console.error('[PWA] Web trigger notifications scheduling failed:', err);
+      }
+    }
+  };
+
+  // Re-sync background native and PWA alarms on schedule, target or settings update
+  useEffect(() => {
+    if (!isInitialized) return;
+    syncBackgroundAlarms();
+  }, [remindersEnabled, reminderInterval, remindersStartTime, remindersEndTime, data.hydration, isInitialized]);
+
   // Request notification permissions
   const requestNotificationPermission = async () => {
     if (!('Notification' in window)) {
@@ -259,7 +477,7 @@ export default function DailyWellnessChecklist() {
               icon: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%232563eb"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg>',
               badge: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%232563eb"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg>',
               tag: 'wellness-active',
-              vibrate: [150, 75, 150],
+              vibrate: [800, 200, 800, 200, 800, 200, 800],
               actions: [
                 { action: 'log-water', title: '💧 Drink 1 Glass' },
                 { action: 'close', title: 'Dismiss' }
@@ -362,7 +580,7 @@ export default function DailyWellnessChecklist() {
               icon: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%232563eb"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg>',
               badge: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%232563eb"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg>',
               tag: 'wellness-hydrate',
-              vibrate: [250, 100, 250],
+              vibrate: [800, 200, 800, 200, 800, 200, 800],
               renotify: true,
               actions: [
                 { action: 'log-water', title: '💧 Drink 1 Glass' },
@@ -408,6 +626,7 @@ export default function DailyWellnessChecklist() {
               icon: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%232563eb"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg>',
               badge: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%232563eb"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg>',
               tag: 'test',
+              vibrate: [800, 200, 800, 200, 800, 200, 800],
               actions: [
                 { action: 'log-water', title: '💧 Drink 1 Glass' },
                 { action: 'close', title: 'Dismiss' }
