@@ -14,12 +14,11 @@ jobs:
         with:
           node-version: 22
 
-      - name: Clean Install NPM Packages and Native Hardware Plugins
+      - name: Force Install NPM Packages and Native Hardware Plugins
         run: |
-          npm install
-          npm install @capacitor/core@6 @capacitor/cli@6 @capacitor/android@6
-          npm install @capacitor/local-notifications@6
-          npm install @capacitor/docgen || true
+          npm install --force
+          npm install @capacitor/core@6 @capacitor/cli@6 @capacitor/android@6 @capacitor/local-notifications@6 --force
+          npm install @capacitor/docgen --force || true
 
       - name: Inject Environment Variables
         run: |
